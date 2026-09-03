@@ -4,17 +4,25 @@ import { errorHandler } from './middlewares/error.middleware.js';
 import authRoutes from './routes/auth.routes.js';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import helmet from 'helmet'
 import { env } from './config/env.js';
+
 export const app = express();
 
+//Middlewares 
 app.use(express.json());
 app.use(cookieParser());
+app.use(helmet());
 app.use(
   cors({
     origin: env.CORS_ORIGIN,
     credentials: true, // required so the browser sends/receives the refresh-token cookie
   }),
 );
+
+//Routes 
+app.use('/api/v1/auth', authRoutes);
+
 
 // Basic liveness check - just confirms the process is up.
 app.get('/health', (_req, res) => {
@@ -31,8 +39,6 @@ app.get('/health/db', async (_req, res) => {
     res.status(503).json({ success: false, database: 'unreachable' });
   }
 });
-
-app.use('/api/v1/auth', authRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` });
