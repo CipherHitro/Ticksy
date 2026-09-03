@@ -55,7 +55,7 @@ async function issueTokenPair(
 export async function register(input: RegisterInput, meta: SessionMeta) {
   const existing = await prisma.user.findUnique({ where: { email: input.email } });
   if (existing) {
-    throw new AppError('An account with this email already exists', 409);
+    throw new AppError('Invalid Credentials! ', 409);
   }
 
   const passwordHash = await hashPassword(input.password);
@@ -80,7 +80,6 @@ export async function register(input: RegisterInput, meta: SessionMeta) {
 export async function login(input: LoginInput, meta: SessionMeta) {
   const user = await prisma.user.findUnique({ where: { email: input.email } });
 
-  // Deliberately vague message - don't reveal whether the email exists.
   if (!user || !user.isActive) {
     throw new AppError('Invalid email or password', 401);
   }
