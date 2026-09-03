@@ -7,3 +7,50 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum Role {
+  ATTENDEE
+  ORGANIZER
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  role         Role     @default(ATTENDEE)
+
+  // Set true only after email verification, if/when you add that flow.
+  isVerified   Boolean  @default(false) @map("is_verified")
+  isActive     Boolean  @default(true) @map("is_active")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+// Storing refresh tokens (hashed) lets you revoke sessions individually
+// (logout from one device) and detect token-reuse attacks - a plain
+// stateless JWT refresh token can't do either of those.
+model RefreshToken {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique @map("token_hash")
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt  DateTime @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  // Useful for the "log out of all devices" / suspicious-login story
+  userAgent  String?  @map("user_agent")
+  ipAddress  String?  @map("ip_address")
+
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
