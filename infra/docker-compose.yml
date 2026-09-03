@@ -1,0 +1,43 @@
+# Each service gets its own database - this is the "database per service"
+# pattern we planned. As you add Catalog/Booking/etc., add their DBs here
+# too (auth-db, catalog-db, booking-db...), never share one Postgres
+# instance's schema across services.
+services:
+  auth-db:
+    image: postgres:16-alpine
+    container_name: auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auth_db
+    ports:
+      - '5433:5432' # host:container - 5433 to avoid clashing with a local Postgres on 5432
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build:
+      context: ../services/auth
+    container_name: auth-service
+    restart: unless-stopped
+    ports:
+      - '4001:4001'
+    env_file:
+      - ../services/auth/.env
+    environment:
+      # Inside Docker's network, services reach each other by container
+      # name, not localhost - this overrides whatever's in .env for the
+      # DB host specifically.
+      DATABASE_URL: postgresql://postgres:postgres@auth-db:5432/auth_db?schema=public
+    depends_on:
+      auth-db:
+        condition: service_healthy
+
+volumes:
+  auth_db_data:
