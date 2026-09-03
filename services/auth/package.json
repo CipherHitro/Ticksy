@@ -21,7 +21,10 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "prisma": "^6.19.3",
+    "zod": "^4.5.4"
   }
 }
