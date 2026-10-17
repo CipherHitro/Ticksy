@@ -1,18 +1,19 @@
 import type { Request, Response, NextFunction } from 'express';
-import { Role } from '@prisma/client';
+import type { Role } from '@prisma/client';
 import { AppError } from '../utils/AppError.js';
 
-// Usage: router.post('/events', requireAuth, requireRole(Role.ORGANIZER), createEvent)
-//
-// This is how the Catalog/Booking services will also gate organizer-only
-// actions (e.g. "create event", "cancel event") once you build them -
-// same pattern, just re-implemented per service since each service
-// verifies the JWT independently (no shared session store).
+/**
+ * Usage: router.post('/events', requireAuth, requireRole('ORGANIZER'), createEvent)
+ *
+ * requireAuth must always run before requireRole so req.user is populated.
+ * Keeping auth (identity) and authz (permission) separate means routes can
+ * compose them independently.
+ */
 export function requireRole(...allowedRoles: Role[]) {
-  return (req: Request, _res: Response, next: NextFunction) => {
+  return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       // requireAuth should always run first; this is a safety net.
-      return next(new AppError('Authentication required', 401));
+      return next(new AppError('Authentication required', 401, 'UNAUTHENTICATED'));
     }
 
     if (!allowedRoles.includes(req.user.role)) {
@@ -20,6 +21,7 @@ export function requireRole(...allowedRoles: Role[]) {
         new AppError(
           `Role '${req.user.role}' is not permitted to perform this action`,
           403,
+          'FORBIDDEN',
         ),
       );
     }

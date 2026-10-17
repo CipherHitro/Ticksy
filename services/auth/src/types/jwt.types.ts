@@ -1,13 +1,13 @@
-import { Role } from '@prisma/client';
+import type { Role } from '@prisma/client';
 
-// This is the shape every other microservice will see once it verifies
+/**
+ * Claims present inside every access token (verified by all services).
+ * Identity always comes from `sub`. `email` and `name` are for display/
+ * denormalization only – never use them as auth identifiers.
+ */
 export interface AccessTokenPayload {
-  sub: string; // userId
-  role: Role;
+  sub:   string; // userId (UUID)
   email: string;
-}
-
-export interface RefreshTokenPayload {
-  sub: string; // userId
-  tokenId: string; // matches RefreshToken.id in DB, lets us revoke it
+  name:  string;
+  role:  Role;   // ATTENDEE | ORGANIZER | ADMIN
 }
