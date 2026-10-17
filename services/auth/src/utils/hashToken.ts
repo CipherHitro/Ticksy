@@ -1,9 +1,20 @@
+import { randomBytes } from 'crypto';
 import { createHash } from 'crypto';
 
-// Refresh tokens are already high-entropy (signed JWTs), so a fast SHA-256
-// hash is appropriate here - unlike passwords, we don't need bcrypt's
-// deliberate slowness. We only store the hash so that a database leak
-// alone can't be used to impersonate a user.
+/**
+ * Generate a cryptographically random opaque refresh token.
+ * 32 bytes = 256 bits of entropy, base64url-encoded to keep it URL-safe.
+ */
+export function generateOpaqueToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/**
+ * Hash a refresh token with SHA-256 for safe storage.
+ * Refresh tokens are high-entropy so bcrypt's slowness is unnecessary –
+ * a fast SHA-256 is the right tool here. We only store the hash so that
+ * a database leak alone cannot be used to impersonate a user.
+ */
 export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
