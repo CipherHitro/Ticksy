@@ -44,7 +44,7 @@ export async function loginHandler(req: Request, res: Response, next: NextFuncti
 export async function refreshHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const oldToken = req.cookies?.[REFRESH_COOKIE_NAME];
-    if (!oldToken) throw new AppError('No refresh token provided', 401);
+    if (!oldToken) throw new AppError('No refresh token provided', 401, 'UNAUTHENTICATED');
 
     const tokens = await authService.refreshTokens(oldToken, sessionMeta(req));
     res.cookie(REFRESH_COOKIE_NAME, tokens.refreshToken, REFRESH_COOKIE_OPTIONS);

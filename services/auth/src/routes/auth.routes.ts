@@ -13,20 +13,21 @@ import {
 
 const router = Router();
 
-// Brute-force protection on login specifically - this is the endpoint
-// attackers actually hammer. Registration gets a looser limit.
+// Brute-force protection on login specifically.
+// Registration gets a looser limit; other routes inherit the global limiter
+// that the gateway sets for the prefix.
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
+  windowMs:      15 * 60 * 1000, // 15 minutes
+  limit:         10,
   standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: 'Too many login attempts, try again later' },
+  legacyHeaders:   false,
+  message: { success: false, code: 'RATE_LIMITED', message: 'Too many login attempts, try again later' },
 });
 
-router.post('/register', validate(registerSchema), registerHandler);
-router.post('/login', loginLimiter, validate(loginSchema), loginHandler);
-router.post('/refresh', refreshHandler);
-router.post('/logout', logoutHandler);
-router.get('/me', requireAuth, meHandler);
+router.post('/register', validate(registerSchema),              registerHandler);
+router.post('/login',    loginLimiter, validate(loginSchema),   loginHandler);
+router.post('/refresh',                                         refreshHandler);
+router.post('/logout',                                          logoutHandler);
+router.get( '/me',       requireAuth,                           meHandler);
 
 export default router;

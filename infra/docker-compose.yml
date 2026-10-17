@@ -2,6 +2,8 @@
 # pattern we planned. As you add Catalog/Booking/etc., add their DBs here
 # too (auth-db, catalog-db, booking-db...), never share one Postgres
 # instance's schema across services.
+name : ticksy
+
 services:
   auth-db:
     image: postgres:16-alpine
@@ -30,6 +32,8 @@ services:
       - '4001:4001'
     env_file:
       - ../services/auth/.env
+    volumes:
+      - ../services/auth/keys:/app/keys:ro
     environment:
       # Inside Docker's network, services reach each other by container
       # name, not localhost - this overrides whatever's in .env for the
