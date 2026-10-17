@@ -43,5 +43,20 @@ services:
       auth-db:
         condition: service_healthy
 
+  gateway:
+    build:
+      context: ../services/gateway
+    container_name: gateway
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    env_file:
+      - ../services/gateway/.env
+    environment:
+      AUTH_URL: http://auth-service:4001
+      AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+    depends_on:
+      - auth-service
+
 volumes:
   auth_db_data:
