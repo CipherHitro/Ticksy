@@ -1,0 +1,47 @@
+syntax = "proto3";
+package ticksy.payment.v1;
+
+option csharp_namespace = "Ticksy.Payment.Grpc.V1";
+option java_package = "com.ticksy.payment.v1";
+option java_multiple_files = true;
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PAYMENT_STATUS_CREATED = 1;
+  PAYMENT_STATUS_PAID = 2;
+  PAYMENT_STATUS_FAILED = 3;
+  PAYMENT_STATUS_EXPIRED = 4;
+  PAYMENT_STATUS_REFUNDED = 5;
+}
+
+message CreatePaymentRequest {
+  string booking_id       = 1;
+  string user_id          = 2;
+  int64  amount_minor     = 3;  // amount in paise (INR minor units)
+  string currency         = 4;  // e.g. "INR"
+  string idempotency_key  = 5;  // caller-supplied UUID to prevent duplicate payments
+}
+
+message CreatePaymentResponse {
+  string payment_id        = 1;  // our internal payment UUID
+  string provider          = 2;  // "razorpay"
+  string provider_order_id = 3;  // Razorpay order_id to pass to Checkout
+  string public_key        = 4;  // Razorpay key_id (safe to send to browser)
+  int64  amount_minor      = 5;
+  string currency          = 6;
+}
+
+message GetPaymentRequest {
+  string payment_id = 1;
+}
+
+message GetPaymentResponse {
+  string        payment_id = 1;
+  string        booking_id = 2;
+  PaymentStatus status     = 3;
+}
+
+service PaymentService {
+  rpc CreatePayment (CreatePaymentRequest)  returns (CreatePaymentResponse);
+  rpc GetPayment    (GetPaymentRequest)     returns (GetPaymentResponse);
+}

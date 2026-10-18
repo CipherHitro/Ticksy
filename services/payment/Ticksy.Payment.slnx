@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/Ticksy.Payment.Tests/Ticksy.Payment.Tests.csproj" />
+  </Folder>
+</Solution>
