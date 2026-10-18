@@ -55,8 +55,53 @@ services:
     environment:
       AUTH_URL: http://auth-service:4001
       AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+      PAYMENT_URL: http://payment-service:4004
     depends_on:
       - auth-service
+      - payment-service
+
+  payment-db:
+    image: postgres:16-alpine
+    container_name: payment-db
+    restart: unless-stopped
+    env_file:
+      - ../services/payment/.env
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD}
+      POSTGRES_DB: payment_db
+    ports:
+      - "5434:5432" # host:container - 5434 to avoid clashing with auth-db on 5433 or local postgres on 5432
+    volumes:
+      - payment_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  payment-service:
+    build:
+      context: ..
+      dockerfile: services/payment/Dockerfile
+    container_name: payment-service
+    restart: unless-stopped
+    ports:
+      - "4004:4004"
+      - "50054:50054"
+    env_file:
+      - ../services/payment/.env
+    environment:
+      PAYMENT_DB_CONNECTION: Host=payment-db;Port=5432;Database=payment_db;Username=postgres;Password=${PAYMENT_DB_PASSWORD}
+      ConnectionStrings__PaymentDb: Host=payment-db;Port=5432;Database=payment_db;Username=postgres;Password=${PAYMENT_DB_PASSWORD}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+    depends_on:
+      payment-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
 
 volumes:
   auth_db_data:
+  payment_db_data:
