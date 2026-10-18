@@ -12,6 +12,7 @@ const envSchema = z.object({
   AUTH_URL: z.string().default('http://localhost:4001'),
   CATALOG_URL: z.string().default('http://localhost:4002'),
   BOOKING_URL: z.string().default('http://localhost:4003'),
+  PAYMENT_URL: z.string().default('http://localhost:4004'),
 
   // RS256 JWKS public key verification
   AUTH_JWKS_URL: z.string().default('http://localhost:4001/.well-known/jwks.json'),

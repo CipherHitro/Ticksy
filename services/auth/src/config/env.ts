@@ -21,6 +21,8 @@ const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().default(30),
 
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  // Used in the OIDC discovery document so .NET services know the JWKS URL
+  AUTH_SERVICE_URL: z.string().url().optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 
