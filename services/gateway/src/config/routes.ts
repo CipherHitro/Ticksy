@@ -97,6 +97,47 @@ export const ROUTES: RouteDefinition[] = [
     roles: 'any',
     description: 'Generic booking operations (holds, checkout, confirmation)',
   },
+
+  // Payment routes: Webhook MUST be public and match before any wildcard
+  {
+    id: 'payment-webhook-razorpay',
+    methods: ['POST'],
+    pathPattern: '/api/v1/payments/webhooks/razorpay',
+    regex: /^\/api\/v1\/payments\/webhooks\/razorpay\/?$/,
+    upstream: 'payment',
+    authMode: 'public',
+    description: 'Razorpay payment webhooks (public, signature-verified)',
+  },
+  {
+    id: 'payment-refund',
+    methods: ['POST'],
+    pathPattern: '/api/v1/payments/:id/refund',
+    regex: /^\/api\/v1\/payments\/[^/]+\/refund\/?$/,
+    upstream: 'payment',
+    authMode: 'required',
+    roles: ['ADMIN'],
+    description: 'Refund a paid payment (ADMIN only)',
+  },
+  {
+    id: 'payment-verify',
+    methods: ['POST'],
+    pathPattern: '/api/v1/payments/:id/verify',
+    regex: /^\/api\/v1\/payments\/[^/]+\/verify\/?$/,
+    upstream: 'payment',
+    authMode: 'required',
+    roles: 'any',
+    description: 'Verify payment from client signature',
+  },
+  {
+    id: 'payment-get',
+    methods: ['GET'],
+    pathPattern: '/api/v1/payments/:id',
+    regex: /^\/api\/v1\/payments\/[^/]+\/?$/,
+    upstream: 'payment',
+    authMode: 'required',
+    roles: 'any',
+    description: 'Get payment status by ID',
+  },
 ];
 
 /**
