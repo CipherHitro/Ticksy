@@ -56,9 +56,11 @@ services:
       AUTH_URL: http://auth-service:4001
       AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
       PAYMENT_URL: http://payment-service:4004
+      LEDGER_URL: http://ledger-service:4005
     depends_on:
       - auth-service
       - payment-service
+      - ledger-service
 
   payment-db:
     image: postgres:16-alpine
@@ -102,6 +104,48 @@ services:
       auth-service:
         condition: service_started
 
+  ledger-kurrentdb:
+    image: docker.kurrent.io/kurrent-lts/kurrentdb:latest
+    container_name: ledger-kurrentdb
+    restart: unless-stopped
+    command: ["--insecure"]
+    ports:
+      - "2113:2113"
+    volumes:
+      - ledger_kurrentdb_data:/var/lib/eventstore
+
+  ledger-redis:
+    image: redis:7-alpine
+    container_name: ledger-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6381:6379"
+    volumes:
+      - ledger_redis_data:/data
+
+  ledger-service:
+    build:
+      context: ..
+      dockerfile: services/ledger/Dockerfile
+    container_name: ledger-service
+    restart: unless-stopped
+    ports:
+      - "4005:4005"
+    env_file:
+      - ../services/ledger/.env
+    environment:
+      KURRENTDB_CONNECTION: kurrentdb://ledger-kurrentdb:2113?tls=false
+      REDIS_CONNECTION: ledger-redis:6379
+      AUTH_SERVICE_URL: http://auth-service:4001
+      AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+    depends_on:
+      - ledger-kurrentdb
+      - ledger-redis
+      - auth-service
+
 volumes:
   auth_db_data:
   payment_db_data:
+  ledger_kurrentdb_data:
+  ledger_redis_data:

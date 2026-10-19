@@ -26,6 +26,8 @@ export function resolveUpstream(service: UpstreamService): string {
       return env.BOOKING_URL;
     case 'payment':
       return env.PAYMENT_URL;
+    case 'ledger':
+      return env.LEDGER_URL;
     default:
       throw new Error(`Unknown upstream service: ${service}`);
   }
