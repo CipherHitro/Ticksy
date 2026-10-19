@@ -138,6 +138,28 @@ export const ROUTES: RouteDefinition[] = [
     roles: 'any',
     description: 'Get payment status by ID',
   },
+
+  // Ledger routes: /me (ORGANIZER/ADMIN) and /admin (ADMIN)
+  {
+    id: 'ledger-me',
+    methods: ['*'],
+    pathPattern: '/api/v1/ledger/me/**',
+    regex: /^\/api\/v1\/ledger\/me(\/.*)?$/,
+    upstream: 'ledger',
+    authMode: 'required',
+    roles: ['ORGANIZER', 'ADMIN'],
+    description: 'Organizer ledger queries and payout requests',
+  },
+  {
+    id: 'ledger-admin',
+    methods: ['*'],
+    pathPattern: '/api/v1/ledger/admin/**',
+    regex: /^\/api\/v1\/ledger\/admin(\/.*)?$/,
+    upstream: 'ledger',
+    authMode: 'required',
+    roles: ['ADMIN'],
+    description: 'Admin ledger controls and projection rebuilds',
+  },
 ];
 
 /**
