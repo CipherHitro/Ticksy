@@ -4,7 +4,7 @@
 .env.*.local
 *.pem
 keys/
-
+.agents/skills
 # Dependencies and build outputs
 node_modules/
 dist/
