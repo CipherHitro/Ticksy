@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatINR } from '../../utils/formatters';
 import type { LedgerEntry } from '../../types';
+import { getLedgerStatements } from '../../services/api';
 import { ArrowUpRight } from 'lucide-react';
 
 interface LedgerSectionProps {
@@ -10,53 +11,15 @@ interface LedgerSectionProps {
 export const LedgerSection: React.FC<LedgerSectionProps> = ({
   onOpenOrganizerDashboard,
 }) => {
-  const [entries, setEntries] = useState<LedgerEntry[]>([
-    {
-      id: 'led-1',
-      timestamp: '18:14:02',
-      type: 'TICKET_SALE',
-      amountMinor: 240000,
-      runningBalanceMinor: 14250000,
-      referenceId: 'TKS-8821-X09',
-      description: 'Ticket sale (2 seats · Fan Pit)',
-    },
-    {
-      id: 'led-2',
-      timestamp: '18:14:03',
-      type: 'PLATFORM_FEE',
-      amountMinor: -12000,
-      runningBalanceMinor: 14238000,
-      referenceId: 'FEE-8821',
-      description: 'Platform fee 5%',
-    },
-    {
-      id: 'led-3',
-      timestamp: '17:58:20',
-      type: 'REFUND',
-      amountMinor: -120000,
-      runningBalanceMinor: 14358000,
-      referenceId: 'REF-0491',
-      description: 'Refund (Seat B-14)',
-    },
-    {
-      id: 'led-4',
-      timestamp: '16:30:00',
-      type: 'PAYOUT',
-      amountMinor: -4000000,
-      runningBalanceMinor: 14478000,
-      referenceId: 'PO-2026-091',
-      description: 'Bank transfer (HDFC ...8812)',
-    },
-    {
-      id: 'led-5',
-      timestamp: '15:22:18',
-      type: 'TICKET_SALE',
-      amountMinor: 499900,
-      runningBalanceMinor: 18478000,
-      referenceId: 'TKS-3312-A01',
-      description: 'Ticket sale (VIP Lounge)',
-    },
-  ]);
+  const [entries, setEntries] = useState<LedgerEntry[]>([]);
+
+  useEffect(() => {
+    getLedgerStatements().then((res) => {
+      if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        setEntries(res.data.slice(0, 5));
+      }
+    });
+  }, []);
 
   // Live simulation: every 4 seconds, a new live ledger entry slides in
   useEffect(() => {

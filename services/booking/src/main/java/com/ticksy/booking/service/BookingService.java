@@ -62,6 +62,68 @@ public class BookingService {
     }
 
     /**
+     * Retrieves all events in inventory with real-time seat counts and tier pricing.
+     */
+    @Transactional(readOnly = true)
+    public List<EventInventoryResponseDto> getAllEvents() {
+        List<EventInventory> inventories = eventInventoryRepository.findAll();
+        Instant now = Instant.now();
+
+        return inventories.stream().map(inv -> {
+            List<Seat> seats = seatRepository.findByEventId(inv.getEventId());
+            Map<String, List<Seat>> byTier = seats.stream().collect(Collectors.groupingBy(Seat::getTierId));
+
+            int totalSeats = seats.size();
+            int availableSeats = (int) seats.stream()
+                    .filter(s -> s.getStatus() == SeatStatus.AVAILABLE ||
+                            (s.getStatus() == SeatStatus.HELD && s.getHeldUntil() != null && s.getHeldUntil().isBefore(now)))
+                    .count();
+
+            Long minPrice = seats.stream()
+                    .map(Seat::getPriceMinor)
+                    .min(Long::compareTo)
+                    .orElse(0L);
+
+            String currency = seats.isEmpty() ? "INR" : seats.getFirst().getCurrency();
+
+            List<EventInventoryResponseDto.TierSummaryDto> tiers = byTier.entrySet().stream()
+                    .map(e -> {
+                        String tierId = e.getKey();
+                        List<Seat> tSeats = e.getValue();
+                        int tTotal = tSeats.size();
+                        int tAvail = (int) tSeats.stream()
+                                .filter(s -> s.getStatus() == SeatStatus.AVAILABLE ||
+                                        (s.getStatus() == SeatStatus.HELD && s.getHeldUntil() != null && s.getHeldUntil().isBefore(now)))
+                                .count();
+                        Seat first = tSeats.getFirst();
+                        return new EventInventoryResponseDto.TierSummaryDto(
+                                tierId,
+                                "Tier " + tierId,
+                                first.getPriceMinor(),
+                                first.getCurrency(),
+                                tTotal,
+                                tAvail
+                        );
+                    })
+                    .sorted(Comparator.comparing(EventInventoryResponseDto.TierSummaryDto::priceMinor))
+                    .toList();
+
+            return new EventInventoryResponseDto(
+                    inv.getEventId(),
+                    inv.getTitle(),
+                    inv.getOrganizerId(),
+                    inv.getStartsAt().toString(),
+                    inv.getStatus().name(),
+                    minPrice,
+                    currency,
+                    totalSeats,
+                    availableSeats,
+                    tiers
+            );
+        }).toList();
+    }
+
+    /**
      * Retrieves the seat map for an event.
      * Implements lazy inventory initialization on first request via Catalog gRPC.
      */

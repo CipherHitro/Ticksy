@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { EventItem, Seat } from '../../types';
 import { formatINR, formatTimer } from '../../utils/formatters';
-import { X, Calendar, MapPin, Clock, ArrowRight, ShieldCheck } from 'lucide-react';
+import { X, Calendar, MapPin, Clock, ArrowRight } from 'lucide-react';
+import { getEventSeats } from '../../services/api';
 
 interface EventDetailModalProps {
   event: EventItem | null;
@@ -9,17 +10,39 @@ interface EventDetailModalProps {
   onProceedToCheckout: (event: EventItem, seats: Seat[]) => void;
 }
 
+interface BackendSeat {
+  id: number;
+  label: string;
+  status: string;
+}
+
+interface BackendTier {
+  tierId: string;
+  name: string;
+  priceMinor: number;
+  currency: string;
+  total: number;
+  available: number;
+  seats: BackendSeat[];
+}
+
 export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   event,
   onClose,
   onProceedToCheckout,
 }) => {
-  const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>(['B-4']);
-  const [countdown, setCountdown] = useState<number>(480);
+  const [tiers, setTiers] = useState<BackendTier[]>([]);
+  const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
+  const [countdown, setCountdown] = useState<number>(600);
 
-  const rows = ['A', 'B', 'C', 'D', 'E', 'F'];
-  const cols = 10;
-  const bookedSeatSet = new Set(['A-1', 'A-2', 'B-1', 'C-5', 'C-6', 'D-9', 'E-3', 'E-4']);
+  useEffect(() => {
+    if (!event) return;
+    getEventSeats(event.id).then((res) => {
+      if (res.success && res.data?.tiers) {
+        setTiers(res.data.tiers);
+      }
+    });
+  }, [event]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -30,38 +53,55 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
   if (!event) return null;
 
+  // Flatten seat map from MySQL
+  const seatMap = new Map<string, { tierId: string; tierName: string; priceMinor: number; status: string }>();
+  tiers.forEach((t) => {
+    t.seats.forEach((s) => {
+      seatMap.set(s.label, {
+        tierId: t.tierId,
+        tierName: t.name,
+        priceMinor: t.priceMinor,
+        status: s.status,
+      });
+    });
+  });
 
   const handleToggleSeat = (seatId: string) => {
-    if (bookedSeatSet.has(seatId)) return;
+    const info = seatMap.get(seatId);
+    if (!info || info.status !== 'AVAILABLE') return;
+
     if (selectedSeatIds.includes(seatId)) {
       setSelectedSeatIds(selectedSeatIds.filter((id) => id !== seatId));
     } else {
+      if (selectedSeatIds.length >= 6) return;
       setSelectedSeatIds([...selectedSeatIds, seatId]);
-      setCountdown(480);
+      setCountdown(600);
     }
-  };
-
-  const getTierForSeat = (row: string) => {
-    if (row === 'A' || row === 'B') {
-      return event.tiers[1] || event.tiers[0];
-    }
-    return event.tiers[0];
   };
 
   const selectedSeatsData: Seat[] = selectedSeatIds.map((id) => {
     const [row, num] = id.split('-');
-    const tier = getTierForSeat(row);
+    const info = seatMap.get(id);
     return {
       id,
       row,
-      number: parseInt(num),
-      tierId: tier.id,
-      tierName: tier.name,
-      priceMinor: tier.priceMinor,
+      number: parseInt(num) || 1,
+      tierId: info?.tierId || 'tier-general',
+      tierName: info?.tierName || 'Standard Pass',
+      priceMinor: info?.priceMinor || event.priceMinor,
       status: 'held',
       heldByMe: true,
     };
   });
+
+  // Group by row
+  const rowLabels = new Map<string, string[]>();
+  for (const label of seatMap.keys()) {
+    const row = label.split('-')[0];
+    if (!rowLabels.has(row)) rowLabels.set(row, []);
+    rowLabels.get(row)!.push(label);
+  }
+  const sortedRows = Array.from(rowLabels.keys()).sort();
 
   const subtotalMinor = selectedSeatsData.reduce((acc, s) => acc + s.priceMinor, 0);
 
@@ -111,7 +151,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
           <div className="lg:col-span-7 space-y-4">
             <div className="flex items-center justify-between border-b border-[#0B0A08]/15 pb-2">
               <span className="font-mono text-xs uppercase font-bold text-[#0B0A08]">
-                PICK YOUR SEATS (INTERACTIVE MAP)
+                PICK YOUR SEATS (MYSQL SEAT INVENTORY)
               </span>
               <div className="flex items-center gap-1.5 font-mono text-xs text-[#FF4F1F]">
                 <Clock className="w-3.5 h-3.5" />
@@ -125,97 +165,101 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
             </div>
 
             {/* Grid */}
-            <div className="space-y-2 py-2">
-              {rows.map((row) => (
-                <div key={row} className="flex items-center justify-center gap-2">
-                  <span className="font-mono text-xs w-5 font-bold text-[#0B0A08]/50">
-                    {row}
-                  </span>
-                  <div className="flex gap-1.5">
-                    {Array.from({ length: cols }).map((_, cIdx) => {
-                      const num = cIdx + 1;
-                      const seatId = `${row}-${num}`;
-                      const isBooked = bookedSeatSet.has(seatId);
-                      const isSelected = selectedSeatIds.includes(seatId);
-
-                      let style = 'bg-[#EDE8DD] border-[#0B0A08]/20 text-[#0B0A08] hover:border-[#0B0A08]/60';
-                      if (isSelected) style = 'bg-[#FF4F1F] text-white border-[#FF4F1F] font-bold ring-2 ring-[#FF4F1F]/30';
-                      if (isBooked) style = 'bg-[#0B0A08]/10 text-[#0B0A08]/20 border-transparent cursor-not-allowed line-through';
-
-                      return (
-                        <button
-                          key={seatId}
-                          disabled={isBooked}
-                          onClick={() => handleToggleSeat(seatId)}
-                          className={`w-7 h-7 rounded-[2px] font-mono text-xs flex items-center justify-center border transition-all ${style}`}
-                        >
-                          {num}
-                        </button>
-                      );
-                    })}
-                  </div>
+            <div className="space-y-2 py-2 overflow-x-auto">
+              {sortedRows.length === 0 ? (
+                <div className="text-center py-8 font-mono text-xs text-[#0B0A08]/50">
+                  Loading seats from MySQL...
                 </div>
-              ))}
-            </div>
+              ) : (
+                sortedRows.map((row) => {
+                  const labels = (rowLabels.get(row) || []).sort((a, b) => {
+                    const numA = parseInt(a.split('-')[1]) || 0;
+                    const numB = parseInt(b.split('-')[1]) || 0;
+                    return numA - numB;
+                  });
 
-            <p className="font-sans text-xs text-[#0B0A08]/70 pt-2">
-              {event.subtitle}
-            </p>
+                  return (
+                    <div key={row} className="flex items-center justify-center gap-2 min-w-[360px]">
+                      <span className="font-mono text-xs w-5 font-bold text-[#0B0A08]/50">
+                        {row}
+                      </span>
+                      <div className="flex gap-1.5">
+                        {labels.map((seatId) => {
+                          const info = seatMap.get(seatId);
+                          const isAvailable = info?.status === 'AVAILABLE';
+                          const isSelected = selectedSeatIds.includes(seatId);
+                          const isHeld = info?.status === 'HELD';
+                          const isSold = info?.status === 'SOLD';
+
+                          let btnClass = 'bg-[#EDE8DD] border-[#0B0A08]/20 text-[#0B0A08]/80 hover:border-[#0B0A08]/80';
+                          if (isSelected) {
+                            btnClass = 'bg-[#FF4F1F] text-white border-[#FF4F1F] ring-2 ring-[#FF4F1F]/30 font-bold';
+                          } else if (isHeld) {
+                            btnClass = 'bg-[#B8975A]/20 text-[#B8975A] border-[#B8975A]/40 cursor-not-allowed';
+                          } else if (isSold) {
+                            btnClass = 'bg-[#0B0A08]/10 text-[#0B0A08]/20 border-transparent cursor-not-allowed line-through';
+                          }
+
+                          return (
+                            <button
+                              key={seatId}
+                              onClick={() => handleToggleSeat(seatId)}
+                              disabled={!isAvailable}
+                              title={`${seatId} (${info?.tierName}: ${formatINR(info?.priceMinor || 0)})`}
+                              className={`w-7 h-7 rounded-[2px] font-mono text-[11px] border transition-all flex items-center justify-center ${btnClass}`}
+                            >
+                              {seatId.split('-')[1]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
-          {/* Pricing Tiers & Summary (5 cols) */}
-          <div className="lg:col-span-5 bg-[#F5F2EB] border border-[#0B0A08]/15 p-6 rounded-[3px] space-y-4">
-            <div className="font-mono text-xs uppercase text-[#0B0A08]/60 font-bold border-b border-[#0B0A08]/15 pb-2">
-              AVAILABLE TIERS
+          {/* Pricing & Checkout Summary (5 cols) */}
+          <div className="lg:col-span-5 bg-[#F5F2EB] border border-[#0B0A08]/15 rounded-[3px] p-6 space-y-6">
+            <div>
+              <div className="font-mono text-xs uppercase tracking-widest text-[#0B0A08]/60 mb-1">
+                SELECTION SUMMARY
+              </div>
+              <h3 className="font-serif text-2xl text-[#0B0A08]">
+                {selectedSeatsData.length} Seat{selectedSeatsData.length === 1 ? '' : 's'} Selected
+              </h3>
             </div>
 
-            <div className="space-y-2">
-              {event.tiers.map((tier) => (
-                <div
-                  key={tier.id}
-                  className="flex items-center justify-between p-2.5 bg-[#EDE8DD] border border-[#0B0A08]/15 rounded-[2px] font-mono text-xs"
-                >
-                  <div>
-                    <div className="font-bold text-[#0B0A08]">{tier.name}</div>
-                    <div className="text-[10px] text-[#0B0A08]/60">{tier.available} passes left</div>
-                  </div>
-                  <div className="font-bold text-[#0B0A08] tabular-nums">
-                    {formatINR(tier.priceMinor)}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-4 border-t border-[#0B0A08]/15 space-y-2 font-mono text-xs">
+            <div className="space-y-2 border-y border-[#0B0A08]/15 py-4 font-mono text-xs">
               <div className="flex justify-between text-[#0B0A08]/70">
-                <span>Selected Seats ({selectedSeatIds.length})</span>
-                <span className="font-bold">{selectedSeatIds.join(', ') || 'None'}</span>
+                <span>Seats</span>
+                <span className="font-bold text-[#0B0A08]">
+                  {selectedSeatIds.join(', ') || 'None selected'}
+                </span>
               </div>
               <div className="flex justify-between text-[#0B0A08]/70">
                 <span>Subtotal</span>
-                <span className="tabular-nums">{formatINR(subtotalMinor)}</span>
+                <span>{formatINR(subtotalMinor)}</span>
               </div>
-              <div className="flex justify-between text-base font-bold text-[#0B0A08] pt-2 border-t border-[#0B0A08]/15">
-                <span>Total Amount</span>
-                <span className="tabular-nums text-[#FF4F1F]">
-                  {formatINR(subtotalMinor + Math.round(subtotalMinor * 0.05))}
-                </span>
+              <div className="flex justify-between text-[#0B0A08]/70">
+                <span>Platform fee (5%)</span>
+                <span>{formatINR(Math.round(subtotalMinor * 0.05))}</span>
+              </div>
+              <div className="flex justify-between text-base font-bold text-[#0B0A08] pt-2 border-t border-[#0B0A08]/10 font-sans">
+                <span>Total amount</span>
+                <span className="font-mono text-lg">{formatINR(subtotalMinor + Math.round(subtotalMinor * 0.05))}</span>
               </div>
             </div>
 
             <button
               onClick={() => onProceedToCheckout(event, selectedSeatsData)}
-              disabled={selectedSeatIds.length === 0}
-              className="w-full py-3 bg-[#FF4F1F] hover:bg-[#FF4F1F]/90 disabled:opacity-40 text-white font-mono text-xs font-semibold rounded-[2px] transition-colors flex items-center justify-center gap-2"
+              disabled={selectedSeatsData.length === 0}
+              className="w-full py-3.5 bg-[#FF4F1F] text-white hover:bg-[#E0451A] disabled:opacity-40 disabled:cursor-not-allowed font-mono text-xs uppercase tracking-wider rounded-[2px] transition-all flex items-center justify-center gap-2 shadow-sm"
             >
-              <span>Hold & Proceed to Payment</span>
+              <span>Hold & Proceed to Checkout</span>
               <ArrowRight className="w-4 h-4" />
             </button>
-
-            <div className="flex items-center gap-1.5 font-mono text-[10px] text-[#0B0A08]/60 justify-center">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Redis distributed lock active for 8 minutes</span>
-            </div>
           </div>
         </div>
       </div>

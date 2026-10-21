@@ -1,7 +1,26 @@
 import React, { useState } from 'react';
 import { TicketStub } from '../common/TicketStub';
-import { INITIAL_MY_TICKETS } from '../../data/mockData';
+import type { Ticket } from '../../types';
 import { Users, Crosshair, Clock, CheckCircle } from 'lucide-react';
+
+const storyTicket: Ticket = {
+  id: 'tkt-story-001',
+  serialNumber: 'TK-0C8672BE',
+  eventId: 'evt-001',
+  eventTitle: 'Bangalore Open Air 2026',
+  eventDate: '2026-11-14 · 16:00 IST',
+  venue: 'Jayamahal Palace Grounds',
+  city: 'Bengaluru',
+  seats: ['A-1', 'A-2'],
+  tierName: 'VIP Arena',
+  attendeeName: 'Aarav Sharma',
+  attendeeEmail: 'aarav@ticksy.com',
+  amountMinor: 499800,
+  currency: 'INR',
+  status: 'VALID',
+  purchasedAt: '2026-10-21T17:03:14Z',
+  qrCodeValue: 'ticksy:verified:TK-0C8672BE',
+};
 
 export const WaitingRoomStory: React.FC = () => {
   const [activeStep, setActiveStep] = useState<number>(0);
@@ -184,7 +203,7 @@ export const WaitingRoomStory: React.FC = () => {
                     TRANSACTIONAL SAGA COMPLETE
                   </div>
                   <div className="transform scale-90 sm:scale-95 origin-center">
-                    <TicketStub ticket={INITIAL_MY_TICKETS[0]} showActions={false} />
+                    <TicketStub ticket={storyTicket} showActions={false} />
                   </div>
                 </div>
               )}

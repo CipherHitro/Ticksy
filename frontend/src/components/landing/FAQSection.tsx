@@ -1,6 +1,28 @@
 import React, { useState } from 'react';
-import { FAQ_ITEMS } from '../../data/mockData';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+
+export const FAQ_ITEMS = [
+  {
+    question: 'How does the 10-minute seat hold guarantee zero double-bookings?',
+    answer: 'When you select a seat, Ticksy acquires a distributed lock in Redis for exactly 600 seconds (10 minutes) before the order enters MySQL. If your checkout session expires or you cancel, the lock dissolves automatically and the seat becomes available to the next fan in queue.',
+  },
+  {
+    question: 'Can I get a refund if I cannot attend the event?',
+    answer: 'Yes. Attendees can request a 1-tap refund directly from the "My Tickets" tab. The system cancels the booking in MySQL, revokes the QR ticket stub, and automatically reflects the deduction in the organizer’s append-only ledger.',
+  },
+  {
+    question: 'What is the flash-sale waiting room?',
+    answer: 'For high-demand drops, incoming traffic is metered by a token bucket queue. Fans receive a deterministic position in line and are admitted in batches as seats are held or released. This prevents database starvation and eliminates scalper bot races.',
+  },
+  {
+    question: 'How are organizer payouts calculated and audited?',
+    answer: 'Ticksy’s Ledger Service runs on event sourcing with KurrentDB and CQRS. Every ticket sale, 5% platform fee, attendee refund, and bank payout is recorded as an immutable event. No row can ever be modified or deleted; corrections are handled via explicit reversals.',
+  },
+  {
+    question: 'What payment methods are supported?',
+    answer: 'Ticksy supports all Indian payment methods via Razorpay: UPI (Google Pay, PhonePe, Paytm, Cred), Debit/Credit Cards (RuPay, Visa, Mastercard), and Netbanking across all major Indian banks.',
+  },
+];
 
 export const FAQSection: React.FC = () => {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
@@ -40,17 +62,17 @@ export const FAQSection: React.FC = () => {
                     <span className="font-serif text-xl sm:text-2xl text-[#0B0A08] group-hover:text-[#FF4F1F] transition-colors pr-4">
                       {item.question}
                     </span>
-                    <span className="shrink-0 p-1 border border-[#0B0A08]/20 rounded-[2px] text-[#0B0A08]/60 group-hover:border-[#FF4F1F] group-hover:text-[#FF4F1F] transition-colors">
+                    <span className="p-1 rounded-[2px] border border-[#0B0A08]/20 group-hover:border-[#0B0A08]/60 transition-colors shrink-0">
                       {isOpen ? (
-                        <ChevronUp className="w-4 h-4" />
+                        <ChevronUp className="w-4 h-4 text-[#0B0A08]" />
                       ) : (
-                        <ChevronDown className="w-4 h-4" />
+                        <ChevronDown className="w-4 h-4 text-[#0B0A08]" />
                       )}
                     </span>
                   </button>
 
                   {isOpen && (
-                    <div className="mt-3 pr-8 font-sans text-sm text-[#0B0A08]/70 leading-relaxed">
+                    <div className="mt-3 pr-8 font-sans text-sm text-[#0B0A08]/75 leading-relaxed">
                       {item.answer}
                     </div>
                   )}

@@ -11,9 +11,10 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const [health, setHealth] = useState<{ gateway: boolean; auth: boolean; ledger: boolean; payment: boolean }>({
-    gateway: false,
+  const [health, setHealth] = useState<{ gateway: boolean; auth: boolean; booking: boolean; ledger: boolean; payment: boolean }>({
+    gateway: true,
     auth: false,
+    booking: false,
     ledger: false,
     payment: false,
   });
@@ -85,11 +86,10 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
     {
       name: 'Booking Service',
       port: 4003,
-      stack: 'Java 21, Spring Boot',
+      stack: 'Java 21, Spring Boot 3.3.5',
       db: 'MySQL 8 (3307) + Redis (6380)',
-      role: 'Distributed seat hold locks, transactional saga coordinator',
-      live: false,
-      planned: true,
+      role: 'Distributed seat hold locks, transactional outbox & MySQL row concurrency',
+      live: health.booking,
       prefix: '/api/v1/bookings',
     },
   ];
