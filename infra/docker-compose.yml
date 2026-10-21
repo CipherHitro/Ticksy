@@ -51,16 +51,60 @@ services:
     environment:
       AUTH_URL: http://auth-service:4001
       AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+      CATALOG_URL: http://catalog-service:4002
       BOOKING_URL: http://booking-service:4003
       PAYMENT_URL: http://payment-service:4004
       LEDGER_URL: http://ledger-service:4005
       NOTIFICATION_URL: http://notification-service:4006
     depends_on:
       - auth-service
+      - catalog-service
       - booking-service
       - payment-service
       - ledger-service
       - notification-service
+
+  # ================= CATALOG SERVICE =================
+  catalog-mongo:
+    image: mongo:8
+    container_name: catalog-mongo
+    restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - catalog_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"try { rs.status().ok } catch(e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'catalog-mongo:27017'}]}).ok }\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  catalog-service:
+    build:
+      context: ..
+      dockerfile: services/catalog/Dockerfile
+    container_name: catalog-service
+    restart: unless-stopped
+    ports:
+      - "4002:4002"
+      - "50052:50052"
+    env_file:
+      - ../services/catalog/.env
+    environment:
+      PORT: 4002
+      GRPC_PORT: 50052
+      MONGODB_URI: mongodb://catalog-mongo:27017/catalog_db?replicaSet=rs0&directConnection=true
+      MONGODB_DB: catalog_db
+      AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+      JWT_ISSUER: ticksy-auth
+      JWT_AUDIENCE: ticksy-api
+      ENVIRONMENT: development
+    depends_on:
+      catalog-mongo:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
 
   # ================= BOOKING SERVICE =================
   booking-db:
@@ -119,6 +163,8 @@ services:
       booking-redis:
         condition: service_started
       auth-service:
+        condition: service_started
+      catalog-service:
         condition: service_started
 
   # ================= PAYMENT SERVICE =================
@@ -267,9 +313,10 @@ services:
 
 volumes:
   auth_db_data:
+  catalog_mongo_data:
+  booking_db_data:
   payment_db_data:
   ledger_kurrentdb_data:
   ledger_redis_data:
-  booking_db_data:
   notification_redis_data:
   notification_rabbitmq_data:
