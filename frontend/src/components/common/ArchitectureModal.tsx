@@ -11,11 +11,18 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const [health, setHealth] = useState<{ gateway: boolean; auth: boolean; ledger: boolean; payment: boolean }>({
+  const [health, setHealth] = useState<{
+    gateway: boolean;
+    auth: boolean;
+    ledger: boolean;
+    payment: boolean;
+    notification: boolean;
+  }>({
     gateway: false,
     auth: false,
     ledger: false,
     payment: false,
+    notification: false,
   });
   const [checking, setChecking] = useState(false);
 
@@ -71,6 +78,15 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
       role: 'Event Sourcing, immutable append-only streams, CQRS Redis projections',
       live: health.ledger,
       prefix: '/api/v1/ledger',
+    },
+    {
+      name: 'Notification Service',
+      port: 4006,
+      stack: 'PHP 8.3, Laravel 11',
+      db: 'Redis (Token Bucket) + RabbitMQ',
+      role: 'Async event consumer, Resend transactional emails, webhook delivery tracking',
+      live: health.notification,
+      prefix: '/api/v1/notifications',
     },
     {
       name: 'Catalog Service',

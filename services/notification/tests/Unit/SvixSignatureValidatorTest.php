@@ -10,11 +10,17 @@ use PHPUnit\Framework\TestCase;
 
 class SvixSignatureValidatorTest extends TestCase
 {
-    private string $secret = 'whsec_mfYgzozCUCuObAh7B3MpQEiX2pTgPjy2';
+    private string $secret;
 
     private string $body = '{"type":"email.delivered","data":{"email_id":"re_123"}}';
 
     private string $svixId = 'msg_p5jXN8AQ9njAHUpzQDmGgahb';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->secret = 'whsec_'.base64_encode('test_mock_webhook_secret_key_1234');
+    }
 
     /**
      * U-07: Valid signature passes.
@@ -41,7 +47,7 @@ class SvixSignatureValidatorTest extends TestCase
     public function test_u07_wrong_secret_throws_unauthenticated(): void
     {
         $timestamp = time();
-        $wrongSecret = 'whsec_wrongsecretkey1234567890abcdef';
+        $wrongSecret = 'whsec_'.base64_encode('wrong_mock_webhook_secret_key_5678');
         $signature = SvixSignatureValidator::generateSignature($this->body, $this->svixId, $timestamp, $wrongSecret);
 
         $this->expectException(ApiException::class);
