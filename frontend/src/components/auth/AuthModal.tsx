@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../services/authContext';
-import { TicketStub } from '../common/TicketStub';
-import { INITIAL_MY_TICKETS } from '../../data/mockData';
 import { X, ArrowRight, ShieldCheck } from 'lucide-react';
 import type { UserRole } from '../../types';
+import { TicketStub } from '../common/TicketStub';
 
 export const AuthModal: React.FC = () => {
   const { isAuthModalOpen, closeAuthModal, authModalMode, login, register, quickLogin, loading } = useAuth();
@@ -283,7 +282,27 @@ export const AuthModal: React.FC = () => {
             </div>
 
             <div className="transform scale-90 sm:scale-95 origin-top mb-4">
-              <TicketStub ticket={INITIAL_MY_TICKETS[0]} showActions={false} />
+              <TicketStub
+                ticket={{
+                  id: 'tkt-preview-auth',
+                  serialNumber: 'TK-AUTH889',
+                  eventId: 'evt-001',
+                  eventTitle: 'Bangalore Open Air 2026',
+                  eventDate: '2026-11-14 · 16:00 IST',
+                  venue: 'Jayamahal Palace Grounds',
+                  city: 'Bengaluru',
+                  seats: ['A-1', 'A-2'],
+                  tierName: 'VIP Arena',
+                  attendeeName: 'Verifiable Attendee',
+                  attendeeEmail: 'attendee@ticksy.com',
+                  amountMinor: 499800,
+                  currency: 'INR',
+                  status: 'VALID',
+                  purchasedAt: '2026-10-21T17:03:14Z',
+                  qrCodeValue: 'ticksy:verified:TK-AUTH889',
+                }}
+                showActions={false}
+              />
             </div>
           </div>
 

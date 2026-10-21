@@ -60,6 +60,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Public routes per Ticksy spec
+                        .requestMatchers(HttpMethod.GET, "/api/v1/bookings/events").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/bookings/events/*/seats").permitAll()
                         .requestMatchers("/health/**", "/metrics", "/actuator/**").permitAll()
                         // All other booking endpoints require JWT

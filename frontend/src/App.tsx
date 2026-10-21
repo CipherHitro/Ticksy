@@ -17,16 +17,25 @@ import { CheckoutModal } from './components/booking/CheckoutModal';
 import { MyTicketsModal } from './components/booking/MyTicketsModal';
 import { OrganizerDashboard } from './components/organizer/OrganizerDashboard';
 import { ArchitectureModal } from './components/common/ArchitectureModal';
-import { INITIAL_EVENTS } from './data/mockData';
+import { getEvents } from './services/api';
 import type { EventItem, Seat, Ticket } from './types';
 
 const MainApp: React.FC = () => {
   const { user } = useAuth();
+  const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [checkoutData, setCheckoutData] = useState<{ event: EventItem; seats: Seat[] } | null>(null);
   const [isMyTicketsOpen, setIsMyTicketsOpen] = useState(false);
   const [isOrganizerOpen, setIsOrganizerOpen] = useState(false);
   const [isArchitectureOpen, setIsArchitectureOpen] = useState(false);
+
+  React.useEffect(() => {
+    getEvents().then((res) => {
+      if (res.success && res.data) {
+        setEvents(res.data);
+      }
+    });
+  }, []);
 
   const handleScrollToSection = (sectionId: string) => {
     const el = document.getElementById(sectionId);
@@ -36,9 +45,10 @@ const MainApp: React.FC = () => {
   };
 
   const handleProceedFromTryASeat = (seats: Seat[]) => {
-    // Default to featured event
-    const evt = INITIAL_EVENTS[0];
-    setCheckoutData({ event: evt, seats });
+    const evt = events[0] || null;
+    if (evt) {
+      setCheckoutData({ event: evt, seats });
+    }
   };
 
   const handleCheckoutSuccess = (_ticket: Ticket) => {
@@ -74,7 +84,7 @@ const MainApp: React.FC = () => {
 
         {/* Section 4: This week's drops (Bone) */}
         <EventDrops
-          events={INITIAL_EVENTS}
+          events={events}
           onSelectEvent={(evt) => setSelectedEvent(evt)}
         />
 
@@ -82,7 +92,10 @@ const MainApp: React.FC = () => {
         <WaitingRoomStory />
 
         {/* Section 6: Try a seat interactive map (Bone) */}
-        <TryASeatSection onProceedWithSeats={handleProceedFromTryASeat} />
+        <TryASeatSection
+          event={events[0] || null}
+          onProceedWithSeats={handleProceedFromTryASeat}
+        />
 
         {/* Section 7: Your ticket stub (Ink) */}
         <TicketSection />

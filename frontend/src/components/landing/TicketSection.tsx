@@ -1,10 +1,27 @@
 import React from 'react';
 import { TicketStub } from '../common/TicketStub';
-import { INITIAL_MY_TICKETS } from '../../data/mockData';
+import type { Ticket } from '../../types';
 import { Zap, Send, RotateCcw } from 'lucide-react';
 
 export const TicketSection: React.FC = () => {
-  const sampleTicket = INITIAL_MY_TICKETS[0];
+  const sampleTicket: Ticket = {
+    id: 'tkt-preview-001',
+    serialNumber: 'TK-0C8672BE',
+    eventId: 'evt-001',
+    eventTitle: 'Bangalore Open Air 2026',
+    eventDate: '2026-11-14 · 16:00 IST',
+    venue: 'Jayamahal Palace Grounds',
+    city: 'Bengaluru',
+    seats: ['A-1', 'A-2'],
+    tierName: 'VIP Arena',
+    attendeeName: 'Aarav Sharma',
+    attendeeEmail: 'aarav@ticksy.com',
+    amountMinor: 499800,
+    currency: 'INR',
+    status: 'VALID',
+    purchasedAt: '2026-10-21T17:03:14Z',
+    qrCodeValue: 'ticksy:verified:TK-0C8672BE:0c8672be-bd32-4e2b-a25a-696c24cc44ba',
+  };
 
   return (
     <section className="bg-[#0B0A08] text-[#EDE8DD] py-24 border-b border-hairline-dark paper-grain">

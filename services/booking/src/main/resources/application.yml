@@ -14,7 +14,7 @@ spring:
       minimum-idle: 5
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     open-in-view: false
     show-sql: false
     properties:
@@ -46,12 +46,13 @@ management:
       show-details: when_authorized
 
 # Ticksy Business Limits & Targets
-HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS:600}
-MAX_SEATS_PER_BOOKING: ${MAX_SEATS_PER_BOOKING:6}
-CATALOG_GRPC_TARGET: ${CATALOG_GRPC_TARGET:localhost:50052}
-JWT_ISSUER: ${JWT_ISSUER:ticksy-auth}
-JWT_AUDIENCE: ${JWT_AUDIENCE:ticksy-api}
-AUTH_JWKS_URL: ${AUTH_JWKS_URL:http://localhost:4001/.well-known/jwks.json}
+ticksy:
+  hold-ttl-seconds: ${HOLD_TTL_SECONDS:600}
+  max-seats-per-booking: ${MAX_SEATS_PER_BOOKING:6}
+  catalog-grpc-target: ${CATALOG_GRPC_TARGET:localhost:50052}
+  jwt-issuer: ${JWT_ISSUER:ticksy-auth}
+  jwt-audience: ${JWT_AUDIENCE:ticksy-api}
+  auth-jwks-url: ${AUTH_JWKS_URL:http://localhost:4001/.well-known/jwks.json}
 
 # Resilience4j Circuit Breaker & Retry Specs
 resilience4j:

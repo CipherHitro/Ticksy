@@ -88,6 +88,15 @@ export const ROUTES: RouteDefinition[] = [
     description: 'Seat map view for attendees (optional auth)',
   },
   {
+    id: 'booking-events-read',
+    methods: ['GET'],
+    pathPattern: '/api/v1/bookings/events',
+    regex: /^\/api\/v1\/bookings\/events\/?$/,
+    upstream: 'booking',
+    authMode: 'optional',
+    description: 'Public event listing from inventory (optional auth)',
+  },
+  {
     id: 'booking-all',
     methods: ['*'],
     pathPattern: '/api/v1/bookings/**',

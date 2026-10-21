@@ -1,12 +1,6 @@
-import type { LedgerBalance, LedgerEntry, PaymentRecord, Ticket, User, UserRole } from '../types';
-import { INITIAL_LEDGER_BALANCE, INITIAL_LEDGER_ENTRIES, INITIAL_MY_TICKETS } from '../data/mockData';
+import type { EventItem, LedgerBalance, LedgerEntry, PaymentRecord, Ticket, User, UserRole } from '../types';
 
-const BASE_URL = ''; // Relative path, proxied by Vite to http://localhost:8080
-
-// Local state caches for interactive fallback
-let inMemoryLedgerBalance: LedgerBalance = { ...INITIAL_LEDGER_BALANCE };
-let inMemoryLedgerEntries: LedgerEntry[] = [...INITIAL_LEDGER_ENTRIES];
-let inMemoryTickets: Ticket[] = [...INITIAL_MY_TICKETS];
+const BASE_URL = ''; // Relative path, proxied by Vite directly to backend services
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -111,7 +105,6 @@ export async function loginUser(email: string, password: string): Promise<ApiRes
     };
   }
 
-  // Return real backend error
   return {
     success: false,
     code: res.code || 'INVALID_CREDENTIALS',
@@ -178,7 +171,6 @@ export async function getCurrentUser(): Promise<ApiResponse<User>> {
       role: raw.role,
       createdAt: raw.createdAt,
     };
-    localStorage.setItem('ticksy_cached_user', JSON.stringify(user));
     return { success: true, data: user, requestId: res.requestId };
   }
 
@@ -204,8 +196,9 @@ export async function getCurrentUser(): Promise<ApiResponse<User>> {
 
   return {
     success: false,
-    code: 'UNAUTHENTICATED',
-    message: 'No active session',
+    code: res.code || 'UNAUTHENTICATED',
+    message: res.message || 'No active session',
+    requestId: res.requestId,
   };
 }
 
@@ -215,7 +208,171 @@ export async function logoutUser(): Promise<void> {
   localStorage.removeItem('ticksy_cached_user');
 }
 
+/* ================= BOOKING & INVENTORY API ================= */
+
+export async function getEvents(): Promise<ApiResponse<EventItem[]>> {
+  const res = await apiFetch<any[]>('/api/v1/bookings/events', { method: 'GET' });
+  if (res.success && Array.isArray(res.data)) {
+    const posterMap: Record<string, { subtitle: string; city: string; venue: string; genre: 'music' | 'tech' | 'comedy'; posterUrl: string }> = {
+      'evt-001': {
+        subtitle: 'India’s premier heavy metal and rock spectacle with 12 international acts',
+        city: 'Bengaluru',
+        venue: 'Jayamahal Palace Grounds',
+        genre: 'music',
+        posterUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80',
+      },
+      'evt-002': {
+        subtitle: 'An intimate, stripped-back acoustic evening under the winter sky',
+        city: 'Mumbai',
+        venue: 'Phoenix Marketcity Amphitheatre, Kurla',
+        genre: 'music',
+        posterUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=1200&q=80',
+      },
+      'evt-003': {
+        subtitle: 'Microservices, Event Sourcing, Consensus & Chaos Engineering in Production',
+        city: 'Bengaluru',
+        venue: 'BIEC Convention Hall 3',
+        genre: 'tech',
+        posterUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1200&q=80',
+      },
+      'evt-004': {
+        subtitle: 'Brand-new 90-minute stand-up solo. Strictly 18+.',
+        city: 'Delhi',
+        venue: 'Sirifort Auditorium, August Kranti Marg',
+        genre: 'comedy',
+        posterUrl: 'https://images.unsplash.com/photo-1585699324551-f6c309eedeca?auto=format&fit=crop&w=1200&q=80',
+      },
+      'evt-005': {
+        subtitle: 'High-tech minimal maestro returns to Mumbai for an exclusive sunset session',
+        city: 'Mumbai',
+        venue: 'Mahalaxmi Racecourse Arena',
+        genre: 'music',
+        posterUrl: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1200&q=80',
+      },
+    };
+
+    const events: EventItem[] = res.data.map((item) => {
+      const meta = posterMap[item.id] || {
+        subtitle: 'Official live ticketing event on Ticksy',
+        city: 'India',
+        venue: 'Main Arena',
+        genre: 'music',
+        posterUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80',
+      };
+
+      const startsAtDate = new Date(item.startsAt);
+      const dateStr = startsAtDate.toISOString().split('T')[0];
+      const timeStr = startsAtDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST';
+
+      return {
+        id: item.id,
+        title: item.title,
+        subtitle: meta.subtitle,
+        city: meta.city,
+        venue: meta.venue,
+        date: dateStr,
+        time: timeStr,
+        genre: meta.genre,
+        priceMinor: item.minPriceMinor,
+        currency: item.currency || 'INR',
+        availableSeats: item.availableSeats,
+        totalSeats: item.totalSeats,
+        posterUrl: meta.posterUrl,
+        isFeatured: item.id === 'evt-001',
+        isDropCountdown: item.id === 'evt-001',
+        dropTime: `Live now · ${item.availableSeats} seats remaining`,
+        tiers: (item.tiers || []).map((t: any) => ({
+          id: t.tierId,
+          name: t.name,
+          priceMinor: t.priceMinor,
+          currency: t.currency || 'INR',
+          capacity: t.total,
+          available: t.available,
+        })),
+      };
+    });
+
+    return { success: true, data: events, requestId: res.requestId };
+  }
+
+  return {
+    success: false,
+    code: res.code || 'FETCH_EVENTS_FAILED',
+    message: res.message || 'Failed to fetch events from backend',
+    requestId: res.requestId,
+  };
+}
+
+export async function getEventSeats(eventId: string): Promise<ApiResponse<any>> {
+  return apiFetch(`/api/v1/bookings/events/${eventId}/seats`, { method: 'GET' });
+}
+
+export async function createBookingHold(
+  eventId: string,
+  seats: Array<{ tierId: string; seatLabel: string }>
+): Promise<ApiResponse<any>> {
+  const idempotencyKey = 'idem_hold_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+  return apiFetch('/api/v1/bookings', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ eventId, seats }),
+  });
+}
+
+export async function confirmBookingDev(bookingId: string): Promise<ApiResponse<any>> {
+  return apiFetch(`/api/v1/bookings/${bookingId}/confirm-dev`, { method: 'POST' });
+}
+
+export async function cancelBooking(bookingId: string): Promise<ApiResponse<any>> {
+  return apiFetch(`/api/v1/bookings/${bookingId}/cancel`, { method: 'POST' });
+}
+
+export async function getUserBookings(): Promise<ApiResponse<any[]>> {
+  return apiFetch<any[]>('/api/v1/bookings/me', { method: 'GET' });
+}
+
 /* ================= LEDGER API ================= */
+
+let inMemoryLedgerBalance: LedgerBalance = {
+  organizerId: 'org-001',
+  grossSalesMinor: 5898000,
+  platformFeesMinor: 294900,
+  refundsMinor: 0,
+  payoutsMinor: 1500000,
+  availableBalanceMinor: 4103100,
+  currency: 'INR',
+  asOf: new Date().toISOString(),
+};
+
+let inMemoryLedgerEntries: LedgerEntry[] = [
+  {
+    id: 'led-001',
+    timestamp: 'Today, 02:45 PM',
+    type: 'TICKET_SALE',
+    amountMinor: 299900,
+    runningBalanceMinor: 4103100,
+    referenceId: 'TXN-9812',
+    description: 'Ticket sale: Bangalore Open Air (VIP Pit)',
+  },
+  {
+    id: 'led-002',
+    timestamp: 'Yesterday, 11:15 AM',
+    type: 'PAYOUT',
+    amountMinor: -1500000,
+    runningBalanceMinor: 3803200,
+    referenceId: 'PO-8821',
+    description: 'HDFC Bank Payout completed',
+  },
+  {
+    id: 'led-003',
+    timestamp: '18 Oct, 04:30 PM',
+    type: 'TICKET_SALE',
+    amountMinor: 599800,
+    runningBalanceMinor: 5303200,
+    referenceId: 'TXN-9701',
+    description: 'Ticket sale: Prateek Kuhad Tour (2 x Gold)',
+  },
+];
 
 export async function getLedgerBalance(): Promise<ApiResponse<LedgerBalance>> {
   const res = await apiFetch<any>('/api/v1/ledger/me/balance', { method: 'GET' });
@@ -375,7 +532,7 @@ export async function injectDevEvent(eventType: 'BookingConfirmed' | 'BookingRef
   return { success: true, data: { status: 'Simulated dev event projected' } };
 }
 
-/* ================= PAYMENT & BOOKING API ================= */
+/* ================= PAYMENT API ================= */
 
 export async function verifyPayment(paymentId: string, razorpayPaymentId: string): Promise<ApiResponse<PaymentRecord>> {
   const res = await apiFetch<PaymentRecord>(`/api/v1/payments/${paymentId}/verify`, {
@@ -407,14 +564,15 @@ export async function verifyPayment(paymentId: string, razorpayPaymentId: string
 }
 
 export async function refundPayment(paymentId: string, reason: string): Promise<ApiResponse<any>> {
-  const res = await apiFetch(`/api/v1/payments/${paymentId}/refund`, {
+  return apiFetch(`/api/v1/payments/${paymentId}/refund`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
-  return res;
 }
 
 /* ================= MY TICKETS API (Local / Booking Simulation) ================= */
+
+let inMemoryTickets: Ticket[] = [];
 
 export function getMyTickets(): Ticket[] {
   return [...inMemoryTickets];
@@ -441,6 +599,7 @@ export function refundUserTicket(ticketId: string): boolean {
 export async function checkMicroserviceHealth(): Promise<{
   gateway: boolean;
   auth: boolean;
+  booking: boolean;
   ledger: boolean;
   payment: boolean;
   notification: boolean;
@@ -458,14 +617,14 @@ export async function checkMicroserviceHealth(): Promise<{
     }
   };
 
-  const [gateway, auth, ledger, payment, notification] = await Promise.all([
+  const [gateway, auth, booking, ledger, payment, notification] = await Promise.all([
     check('/health/ready'),
     check('/api/v1/auth/me'),
+    check('/api/v1/bookings/events'),
     check('/api/v1/ledger/me/balance'),
     check('/api/v1/payments/00000000-0000-0000-0000-000000000000'),
     check('/api/v1/notifications/dev/preview/welcome'),
   ]);
 
-  return { gateway, auth, ledger, payment, notification };
+  return { gateway, auth, booking, ledger, payment, notification };
 }
-

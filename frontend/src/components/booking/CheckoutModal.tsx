@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { EventItem, Seat, Ticket } from '../../types';
-import { formatINR, formatTimer, generateTicketSerial } from '../../utils/formatters';
+import { formatINR, formatTimer } from '../../utils/formatters';
 import { useAuth } from '../../services/authContext';
-import { addPurchasedTicket, verifyPayment } from '../../services/api';
+import { confirmBookingDev, createBookingHold, verifyPayment } from '../../services/api';
 import { TicketStub } from '../common/TicketStub';
 import { X, Clock, CheckCircle2, ArrowRight, Shield } from 'lucide-react';
 
@@ -42,15 +42,30 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   const handlePay = async () => {
     setProcessing(true);
-    const paymentId = 'pay_' + Date.now();
-    const rzpId = 'rzp_pay_' + Math.random().toString(36).substring(2, 10);
+    let bookingId = 'bk_' + Date.now();
 
-    // Call payment verification endpoint (integrating with Payment microservice)
-    await verifyPayment(paymentId, rzpId);
+    // 1. Ensure hold is recorded in MySQL + Redis
+    const holdRes = await createBookingHold(
+      event.id,
+      seats.map((s) => ({
+        tierId: s.tierId || 'tier-general',
+        seatLabel: s.id,
+      }))
+    );
 
-    const ticketSerial = generateTicketSerial();
+    if (holdRes.success && holdRes.data?.bookingId) {
+      bookingId = holdRes.data.bookingId;
+    }
+
+    // 2. Confirm booking in MySQL database & trigger outbox event
+    await confirmBookingDev(bookingId);
+
+    // 3. Payment verification integration
+    await verifyPayment(bookingId, 'rzp_pay_' + Math.random().toString(36).substring(2, 9));
+
+    const ticketSerial = 'TK-' + bookingId.slice(0, 8).toUpperCase();
     const newTicket: Ticket = {
-      id: 'tkt_' + Date.now(),
+      id: bookingId,
       serialNumber: ticketSerial,
       eventId: event.id,
       eventTitle: event.title,
@@ -58,17 +73,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       venue: event.venue,
       city: event.city,
       seats: seats.map((s) => s.id),
-      tierName: seats[0].tierName,
+      tierName: seats[0]?.tierName || 'General',
       attendeeName: user?.name || 'Verified Attendee',
-      attendeeEmail: user?.email || 'fan@ticksy.local',
+      attendeeEmail: user?.email || 'attendee@ticksy.com',
       amountMinor: totalAmount,
       currency: 'INR',
       status: 'VALID',
       purchasedAt: new Date().toISOString(),
-      qrCodeValue: `ticksy:verified:${ticketSerial}:${paymentId}`,
+      qrCodeValue: `ticksy:verified:${ticketSerial}:${bookingId}`,
     };
 
-    addPurchasedTicket(newTicket);
     setProcessing(false);
     setConfirmedTicket(newTicket);
     onSuccess(newTicket);
