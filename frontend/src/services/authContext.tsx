@@ -76,24 +76,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const quickLogin = async (role: UserRole) => {
-    const roleEmails: Record<UserRole, { email: string; name: string }> = {
-      ATTENDEE: { email: 'fan@ticksy.local', name: 'Aarav Sharma' },
-      ORGANIZER: { email: 'curator@ticksy.local', name: 'Curator Mumbai' },
-      ADMIN: { email: 'admin@ticksy.local', name: 'Ticksy Superadmin' },
+    const roleCreds: Record<UserRole, { email: string; pass: string }> = {
+      ATTENDEE: { email: 'attendee@ticksy.com', pass: 'Attendee123!' },
+      ORGANIZER: { email: 'organizer@ticksy.com', pass: 'Organizer123!' },
+      ADMIN: { email: 'admin@ticksy.com', pass: 'Admin123!' },
     };
-    const target = roleEmails[role];
-    const u: User = {
-      id: 'demo_' + role.toLowerCase(),
-      email: target.email,
-      name: target.name,
-      role,
-    };
-    const fakeToken = 'demo_jwt_' + role.toLowerCase() + '_' + Date.now();
-    localStorage.setItem('ticksy_access_token', fakeToken);
-    localStorage.setItem('ticksy_cached_user', JSON.stringify(u));
-    setUser(u);
-    setToken(fakeToken);
-    setIsAuthModalOpen(false);
+    const target = roleCreds[role];
+    setLoading(true);
+    const res = await loginUser(target.email, target.pass);
+    setLoading(false);
+    if (res.success && res.data) {
+      setUser(res.data.user);
+      setToken(res.data.token);
+      localStorage.setItem('ticksy_cached_user', JSON.stringify(res.data.user));
+      setIsAuthModalOpen(false);
+    }
   };
 
   const openAuthModal = (mode: 'login' | 'register' = 'login') => {

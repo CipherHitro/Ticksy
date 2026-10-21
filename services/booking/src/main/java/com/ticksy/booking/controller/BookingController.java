@@ -25,6 +25,15 @@ public class BookingController {
     }
 
     /**
+     * Public inventory endpoint to list all available events.
+     */
+    @GetMapping("/events")
+    public ResponseEntity<ApiResponse<java.util.List<EventInventoryResponseDto>>> getEvents() {
+        java.util.List<EventInventoryResponseDto> events = bookingService.getAllEvents();
+        return ResponseEntity.ok(ApiResponse.success(events));
+    }
+
+    /**
      * Public seat map endpoint per tier.
      * HELD seats show as unavailable.
      */

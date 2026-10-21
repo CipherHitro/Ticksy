@@ -11,6 +11,22 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      '/api/v1/auth': {
+        target: 'http://localhost:4001',
+        changeOrigin: true,
+      },
+      '/api/v1/bookings': {
+        target: 'http://localhost:4003',
+        changeOrigin: true,
+      },
+      '/api/v1/payments': {
+        target: 'http://localhost:4004',
+        changeOrigin: true,
+      },
+      '/api/v1/ledger': {
+        target: 'http://localhost:4005',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,

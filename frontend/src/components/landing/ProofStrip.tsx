@@ -1,5 +1,11 @@
 import React from 'react';
-import { PROOF_METRICS } from '../../data/mockData';
+
+export const PROOF_METRICS = [
+  { value: '14,200', label: 'SEATS CHECKED / SEC', note: 'k6 load test · 0 double-bookings' },
+  { value: '0', label: 'OVERSOLD SEATS', note: 'Redis distributed lock + MySQL row lock' },
+  { value: '42ms', label: 'P95 BOOKING TIME', note: 'End-to-end hold & saga confirm' },
+  { value: '< 1m', label: 'PAYOUT VISIBILITY', note: 'Immutable KurrentDB event projection' },
+];
 
 export const ProofStrip: React.FC = () => {
   return (

@@ -39,6 +39,7 @@ services:
       # name, not localhost - this overrides whatever's in .env for the
       # DB host specifically.
       DATABASE_URL: postgresql://postgres:postgres@auth-db:5432/auth_db?schema=public
+      AUTH_SERVICE_URL: http://auth-service:4001
     depends_on:
       auth-db:
         condition: service_healthy
@@ -73,7 +74,7 @@ services:
       - ../services/payment/.env
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD:-postgres}
       POSTGRES_DB: payment_db
     ports:
       - "5434:5432" # host:container - 5434 to avoid clashing with auth-db on 5433 or local postgres on 5432
@@ -97,8 +98,8 @@ services:
     env_file:
       - ../services/payment/.env
     environment:
-      PAYMENT_DB_CONNECTION: Host=payment-db;Port=5432;Database=payment_db;Username=postgres;Password=${PAYMENT_DB_PASSWORD}
-      ConnectionStrings__PaymentDb: Host=payment-db;Port=5432;Database=payment_db;Username=postgres;Password=${PAYMENT_DB_PASSWORD}
+      PAYMENT_DB_CONNECTION: Host=payment-db;Port=5432;Database=payment_db;Username=postgres;Password=${PAYMENT_DB_PASSWORD:-postgres}
+      ConnectionStrings__PaymentDb: Host=payment-db;Port=5432;Database=payment_db;Username=postgres;Password=${PAYMENT_DB_PASSWORD:-postgres}
       AUTH_SERVICE_URL: http://auth-service:4001
       AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
     depends_on:
@@ -142,6 +143,8 @@ services:
       REDIS_CONNECTION: ledger-redis:6379
       AUTH_SERVICE_URL: http://auth-service:4001
       AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+      Jwt__AuthServiceUrl: http://auth-service:4001
+      Jwt__MetadataAddress: http://auth-service:4001/.well-known/openid-configuration
     depends_on:
       - ledger-kurrentdb
       - ledger-redis
