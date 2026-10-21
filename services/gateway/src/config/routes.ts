@@ -160,6 +160,37 @@ export const ROUTES: RouteDefinition[] = [
     roles: ['ADMIN'],
     description: 'Admin ledger controls and projection rebuilds',
   },
+
+  // Notification routes: Webhook MUST be public and match before wildcards
+  {
+    id: 'notification-webhook-resend',
+    methods: ['POST'],
+    pathPattern: '/api/v1/notifications/webhooks/resend',
+    regex: /^\/api\/v1\/notifications\/webhooks\/resend\/?$/,
+    upstream: 'notification',
+    authMode: 'public',
+    description: 'Resend email status webhooks (public, Svix signature verified)',
+  },
+  {
+    id: 'notification-me',
+    methods: ['*'],
+    pathPattern: '/api/v1/notifications/me/**',
+    regex: /^\/api\/v1\/notifications\/me(\/.*)?$/,
+    upstream: 'notification',
+    authMode: 'required',
+    roles: 'any',
+    description: 'User notification history and preferences',
+  },
+  {
+    id: 'notification-admin',
+    methods: ['*'],
+    pathPattern: '/api/v1/notifications/admin/**',
+    regex: /^\/api\/v1\/notifications\/admin(\/.*)?$/,
+    upstream: 'notification',
+    authMode: 'required',
+    roles: ['ADMIN'],
+    description: 'Admin notification logs, retry, stats, and suppressions',
+  },
 ];
 
 /**

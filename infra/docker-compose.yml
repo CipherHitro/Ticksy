@@ -57,10 +57,12 @@ services:
       AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
       PAYMENT_URL: http://payment-service:4004
       LEDGER_URL: http://ledger-service:4005
+      NOTIFICATION_URL: http://notification-service:4006
     depends_on:
       - auth-service
       - payment-service
       - ledger-service
+      - notification-service
 
   payment-db:
     image: postgres:16-alpine
@@ -144,8 +146,54 @@ services:
       - ledger-redis
       - auth-service
 
+  notification-redis:
+    image: redis:7-alpine
+    container_name: notification-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6382:6379"
+    volumes:
+      - notification_redis_data:/data
+
+  notification-rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: notification-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - notification_rabbitmq_data:/var/lib/rabbitmq
+
+  notification-service:
+    build:
+      context: ../services/notification
+    container_name: notification-service
+    restart: unless-stopped
+    ports:
+      - "4006:4006"
+    env_file:
+      - ../services/notification/.env
+    environment:
+      PORT: 4006
+      REDIS_HOST: notification-redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: notification-rabbitmq
+      RABBITMQ_PORT: 5672
+      AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+    depends_on:
+      - notification-redis
+      - notification-rabbitmq
+      - auth-service
+
 volumes:
   auth_db_data:
   payment_db_data:
   ledger_kurrentdb_data:
   ledger_redis_data:
+  notification_redis_data:
+  notification_rabbitmq_data:
