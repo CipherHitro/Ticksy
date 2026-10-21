@@ -55,12 +55,15 @@ services:
     environment:
       AUTH_URL: http://auth-service:4001
       AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+      BOOKING_URL: http://booking-service:4003
       PAYMENT_URL: http://payment-service:4004
       LEDGER_URL: http://ledger-service:4005
     depends_on:
       - auth-service
+      - booking-service
       - payment-service
       - ledger-service
+
 
   payment-db:
     image: postgres:16-alpine
@@ -144,8 +147,67 @@ services:
       - ledger-redis
       - auth-service
 
+  booking-db:
+    image: mysql:8.0
+    container_name: booking-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: booking_db
+      MYSQL_USER: booking_user
+      MYSQL_PASSWORD: booking_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - booking_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  booking-redis:
+    image: redis:7-alpine
+    container_name: booking-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+
+  booking-service:
+    build:
+      context: ../services/booking
+      dockerfile: Dockerfile
+    container_name: booking-service
+    restart: unless-stopped
+    ports:
+      - "4003:4003"
+    environment:
+      PORT: 4003
+      MYSQL_HOST: booking-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: booking_db
+      MYSQL_USER: booking_user
+      MYSQL_PASSWORD: booking_pass
+      MYSQL_URL: jdbc:mysql://booking-db:3306/booking_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&createDatabaseIfNotExist=true
+      REDIS_HOST: booking-redis
+      REDIS_PORT: 6379
+      AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+      JWT_ISSUER: ticksy-auth
+      JWT_AUDIENCE: ticksy-api
+      CATALOG_GRPC_TARGET: catalog-service:50052
+      HOLD_TTL_SECONDS: 600
+      MAX_SEATS_PER_BOOKING: 6
+    depends_on:
+      booking-db:
+        condition: service_healthy
+      booking-redis:
+        condition: service_started
+      auth-service:
+        condition: service_started
+
 volumes:
   auth_db_data:
   payment_db_data:
   ledger_kurrentdb_data:
   ledger_redis_data:
+  booking_db_data:
