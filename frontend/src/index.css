@@ -1,1 +1,89 @@
 @import "tailwindcss";
+
+@theme {
+  --color-ink: #0B0A08;
+  --color-bone: #EDE8DD;
+  --color-ember: #FF4F1F;
+  --color-brass: #B8975A;
+
+  --color-ink-elevated: #161410;
+  --color-bone-muted: #D9D2C3;
+
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: #0B0A08;
+  color: #EDE8DD;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular figures for aligned prices, seat IDs, and ledger balances */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 1px Hairline borders defined in ticksy-design.md */
+.border-hairline-dark {
+  border-color: rgba(237, 232, 221, 0.12);
+}
+
+.border-hairline-light {
+  border-color: rgba(11, 10, 8, 0.12);
+}
+
+/* Subtle paper grain texture overlay for dark sections (3-4% noise) */
+.paper-grain {
+  background-image: radial-gradient(rgba(237, 232, 221, 0.04) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+.paper-grain-dense {
+  background-image: radial-gradient(rgba(237, 232, 221, 0.06) 1px, transparent 0);
+  background-size: 16px 16px;
+}
+
+/* Notched stub edges for tickets and poster cards */
+.notch-stub {
+  position: relative;
+  background-image: radial-gradient(circle at 0 50%, transparent 10px, inherit 11px),
+                    radial-gradient(circle at 100% 50%, transparent 10px, inherit 11px);
+}
+
+/* Perforated ticket tear line */
+.perforated-v {
+  background-image: linear-gradient(to bottom, rgba(237, 232, 221, 0.3) 50%, transparent 50%);
+  background-size: 1px 10px;
+  background-repeat: repeat-y;
+}
+
+.perforated-h {
+  background-image: linear-gradient(to right, rgba(11, 10, 8, 0.3) 50%, transparent 50%);
+  background-size: 10px 1px;
+  background-repeat: repeat-x;
+}
+
+/* Smooth custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0B0A08;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(237, 232, 221, 0.2);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(237, 232, 221, 0.4);
+}
