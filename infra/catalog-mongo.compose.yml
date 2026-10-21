@@ -1,0 +1,18 @@
+name: ticksy-catalog-local
+services:
+  catalog-mongo:
+    image: mongo:8
+    container_name: catalog-mongo
+    restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - catalog_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+volumes:
+  catalog_mongo_data:

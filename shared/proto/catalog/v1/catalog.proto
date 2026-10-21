@@ -1,0 +1,35 @@
+syntax = "proto3";
+package ticksy.catalog.v1;
+import "google/protobuf/timestamp.proto";
+option java_package = "com.ticksy.catalog.v1";
+option java_multiple_files = true;
+
+enum EventStatus {
+  EVENT_STATUS_UNSPECIFIED = 0;
+  DRAFT = 1;
+  PUBLISHED = 2;
+  CANCELLED = 3;
+  COMPLETED = 4;
+}
+message TicketTier {
+  string tier_id = 1;
+  string name = 2;
+  int64 price_minor = 3;
+  string currency = 4;
+  int32 capacity = 5;
+  string seat_prefix = 6;
+}
+message GetEventForBookingRequest { string event_id = 1; }
+message EventForBooking {
+  string event_id = 1;
+  string title = 2;
+  string organizer_id = 3;
+  EventStatus status = 4;
+  google.protobuf.Timestamp starts_at = 5;
+  google.protobuf.Timestamp sale_starts_at = 6;
+  google.protobuf.Timestamp sale_ends_at = 7;
+  repeated TicketTier tiers = 8;
+}
+service CatalogService {
+  rpc GetEventForBooking(GetEventForBookingRequest) returns (EventForBooking);
+}
