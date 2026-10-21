@@ -15,7 +15,7 @@ use Tests\TestCase;
 
 class WebhookFeatureTest extends TestCase
 {
-    private string $secret = 'whsec_mfYgzozCUCuObAh7B3MpQEiX2pTgPjy2';
+    private string $secret;
 
     private NotificationRepository $repo;
 
@@ -24,6 +24,8 @@ class WebhookFeatureTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->secret = 'whsec_'.base64_encode('test_mock_webhook_secret_key_1234');
 
         config([
             'notification.email.resend.webhook_secret' => $this->secret,

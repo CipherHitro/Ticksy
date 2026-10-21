@@ -160,6 +160,15 @@ export const ROUTES: RouteDefinition[] = [
     roles: ['ADMIN'],
     description: 'Admin ledger controls and projection rebuilds',
   },
+  {
+    id: 'ledger-dev',
+    methods: ['*'],
+    pathPattern: '/api/v1/ledger/dev/**',
+    regex: /^\/api\/v1\/ledger\/dev(\/.*)?$/,
+    upstream: 'ledger',
+    authMode: 'public',
+    description: 'Dev-only ledger event simulation endpoints',
+  },
 
   // Notification routes: Webhook MUST be public and match before wildcards
   {
@@ -190,6 +199,15 @@ export const ROUTES: RouteDefinition[] = [
     authMode: 'required',
     roles: ['ADMIN'],
     description: 'Admin notification logs, retry, stats, and suppressions',
+  },
+  {
+    id: 'notification-dev',
+    methods: ['*'],
+    pathPattern: '/api/v1/notifications/dev/**',
+    regex: /^\/api\/v1\/notifications\/dev(\/.*)?$/,
+    upstream: 'notification',
+    authMode: 'public',
+    description: 'Dev-only notification preview and test endpoints',
   },
 ];
 
