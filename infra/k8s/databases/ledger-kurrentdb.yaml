@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ledger-kurrentdb
+  namespace: ticksy
+  labels:
+    app: ledger-kurrentdb
+    tier: eventstore
+spec:
+  serviceName: ledger-kurrentdb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ledger-kurrentdb
+  template:
+    metadata:
+      labels:
+        app: ledger-kurrentdb
+        tier: eventstore
+    spec:
+      containers:
+        - name: kurrentdb
+          image: docker.kurrent.io/kurrent-lts/kurrentdb:latest
+          imagePullPolicy: IfNotPresent
+          args: ["--insecure"]
+          ports:
+            - containerPort: 2113
+              name: http-tcp
+          volumeMounts:
+            - name: ledger-kurrentdb-data
+              mountPath: /var/lib/eventstore
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health/live
+              port: 2113
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 2113
+            initialDelaySeconds: 20
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: ledger-kurrentdb-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger-kurrentdb
+  namespace: ticksy
+  labels:
+    app: ledger-kurrentdb
+    tier: eventstore
+spec:
+  type: ClusterIP
+  ports:
+    - port: 2113
+      targetPort: 2113
+      name: http-tcp
+  selector:
+    app: ledger-kurrentdb

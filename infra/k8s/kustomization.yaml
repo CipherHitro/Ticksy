@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ticksy
+
+resources:
+  - namespace.yaml
+  - configmaps/
+  - secrets/
+  - databases/
+  - services/
+  - frontend/
+  - ingress/
+  - hpa/

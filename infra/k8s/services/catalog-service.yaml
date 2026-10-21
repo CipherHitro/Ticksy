@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+  namespace: ticksy
+  labels:
+    app: catalog-service
+    tier: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalog-service
+  template:
+    metadata:
+      labels:
+        app: catalog-service
+        tier: api
+    spec:
+      initContainers:
+        - name: wait-for-mongo
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for catalog-mongo replica set..."
+              until nc -z -w 2 catalog-mongo 27017; do
+                sleep 2
+              done
+              echo "catalog-mongo port is open!"
+      containers:
+        # Container 1: Catalog Service (FastAPI + gRPC Server)
+        - name: catalog-service
+          image: ticksy-catalog-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4002
+              name: http
+            - containerPort: 50052
+              name: grpc
+          env:
+            - name: PORT
+              value: "4002"
+            - name: GRPC_PORT
+              value: "50052"
+            - name: MONGODB_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: CATALOG_MONGODB_URI
+            - name: MONGODB_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: CATALOG_MONGO_DB
+            - name: AUTH_JWKS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: AUTH_JWKS_URL
+            - name: JWT_ISSUER
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: JWT_ISSUER
+            - name: JWT_AUDIENCE
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: JWT_AUDIENCE
+            - name: ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: ENVIRONMENT
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: LOG_LEVEL
+          volumeMounts:
+            - name: shared-logs
+              mountPath: /var/log/ticksy
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4002
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 4002
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+        # Container 2: Multi-container Logging / Sidecar
+        - name: log-sidecar
+          image: busybox:1.36
+          command: ["sh", "-c", "touch /var/log/ticksy/catalog.log && tail -F /var/log/ticksy/catalog.log"]
+          volumeMounts:
+            - name: shared-logs
+              mountPath: /var/log/ticksy
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+
+      volumes:
+        - name: shared-logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service
+  namespace: ticksy
+  labels:
+    app: catalog-service
+    tier: api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4002
+      targetPort: 4002
+      name: http
+    - port: 50052
+      targetPort: 50052
+      name: grpc
+  selector:
+    app: catalog-service

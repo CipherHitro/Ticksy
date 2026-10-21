@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: ticksy
+data:
+  # Global Environment
+  NODE_ENV: "production"
+  ENVIRONMENT: "development"
+  LOG_LEVEL: "INFO"
+
+  # JWT & Security
+  JWT_ISSUER: "ticksy-auth"
+  JWT_AUDIENCE: "ticksy-api"
+  AUTH_JWKS_URL: "http://auth-service:4001/.well-known/jwks.json"
+  AUTH_SERVICE_URL: "http://auth-service:4001"
+  JWT_METADATA_ADDRESS: "http://auth-service:4001/.well-known/openid-configuration"
+
+  # Internal Service Discovery URLs (Gateway & Inter-service)
+  AUTH_URL: "http://auth-service:4001"
+  CATALOG_URL: "http://catalog-service:4002"
+  BOOKING_URL: "http://booking-service:4003"
+  PAYMENT_URL: "http://payment-service:4004"
+  LEDGER_URL: "http://ledger-service:4005"
+  NOTIFICATION_URL: "http://notification-service:4006"
+
+  # gRPC Upstreams
+  CATALOG_GRPC_TARGET: "catalog-service:50052"
+  PAYMENT_GRPC_TARGET: "payment-service:50054"
+
+  # Database Hosts and Ports
+  AUTH_DB_HOST: "auth-db"
+  AUTH_DB_PORT: "5432"
+  AUTH_DB_NAME: "auth_db"
+
+  CATALOG_MONGO_HOST: "catalog-mongo"
+  CATALOG_MONGO_PORT: "27017"
+  CATALOG_MONGO_DB: "catalog_db"
+  CATALOG_MONGODB_URI: "mongodb://catalog-mongo:27017/catalog_db?replicaSet=rs0&directConnection=true"
+
+  BOOKING_DB_HOST: "booking-db"
+  BOOKING_DB_PORT: "3306"
+  BOOKING_DB_NAME: "booking_db"
+  BOOKING_REDIS_HOST: "booking-redis"
+  BOOKING_REDIS_PORT: "6379"
+  HOLD_TTL_SECONDS: "600"
+  MAX_SEATS_PER_BOOKING: "6"
+
+  PAYMENT_DB_HOST: "payment-db"
+  PAYMENT_DB_PORT: "5432"
+  PAYMENT_DB_NAME: "payment_db"
+
+  LEDGER_KURRENTDB_URL: "kurrentdb://ledger-kurrentdb:2113?tls=false"
+  LEDGER_REDIS_HOST: "ledger-redis"
+  LEDGER_REDIS_PORT: "6379"
+
+  NOTIFICATION_REDIS_HOST: "notification-redis"
+  NOTIFICATION_REDIS_PORT: "6379"
+  NOTIFICATION_RABBITMQ_HOST: "notification-rabbitmq"
+  NOTIFICATION_RABBITMQ_PORT: "5672"

@@ -4,6 +4,8 @@
 .env.*.local
 *.pem
 keys/
+infra/k8s/secrets/app-secrets.yaml
+infra/k8s/secrets/auth-keys-secret.yaml
 .agents/skills
 # Dependencies and build outputs
 node_modules/

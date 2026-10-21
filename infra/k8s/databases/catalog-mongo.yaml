@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: catalog-mongo
+  namespace: ticksy
+  labels:
+    app: catalog-mongo
+    tier: database
+spec:
+  serviceName: catalog-mongo
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalog-mongo
+  template:
+    metadata:
+      labels:
+        app: catalog-mongo
+        tier: database
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:8
+          imagePullPolicy: IfNotPresent
+          command:
+            - mongod
+            - "--replSet"
+            - "rs0"
+            - "--bind_ip_all"
+          ports:
+            - containerPort: 27017
+              name: mongodb
+          volumeMounts:
+            - name: catalog-mongo-data
+              mountPath: /data/db
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/bash
+                  - -c
+                  - |
+                    sleep 5
+                    for i in {1..30}; do
+                      if mongosh --quiet --eval "try { rs.status().ok } catch(e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'catalog-mongo:27017'}]}).ok }" | grep -q "1"; then
+                        echo "Replica set rs0 initialized successfully"
+                        exit 0
+                      fi
+                      sleep 2
+                    done
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - "db.adminCommand('ping').ok"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - "db.adminCommand('ping').ok"
+            initialDelaySeconds: 20
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: catalog-mongo-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-mongo
+  namespace: ticksy
+  labels:
+    app: catalog-mongo
+    tier: database
+spec:
+  type: ClusterIP
+  ports:
+    - port: 27017
+      targetPort: 27017
+      name: mongodb
+  selector:
+    app: catalog-mongo
