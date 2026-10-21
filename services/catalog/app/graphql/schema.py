@@ -1,5 +1,6 @@
 from datetime import datetime
 import strawberry
+from strawberry.types import Info
 from strawberry.fastapi import GraphQLRouter
 from strawberry.extensions import DisableIntrospection, QueryDepthLimiter
 from strawberry.schema.config import StrawberryConfig
@@ -58,7 +59,7 @@ class CategoryType:
 @strawberry.type
 class Query:
     @strawberry.field
-    async def events(self, info, filter: EventFilter | None = None, page: int = 1, limit: int = 20) -> list[EventType]:
+    async def events(self, info: Info, filter: EventFilter | None = None, page: int = 1, limit: int = 20) -> list[EventType]:
         if page < 1 or limit < 1 or limit > 50: raise ValueError("page must be positive and limit must be 1..50")
         f={"status":"PUBLISHED"}
         if filter:
@@ -68,7 +69,7 @@ class Query:
         docs=await info.context["request"].app.state.event_repository.collection.find(f).sort("startsAt",1).skip((page-1)*limit).limit(limit).to_list(length=limit)
         return [to_event(d) for d in docs]
     @strawberry.field
-    async def event(self, info, id: str) -> EventType | None:
+    async def event(self, info: Info, id: str) -> EventType | None:
         d=await info.context["request"].app.state.event_repository.get(id)
         if not d or d["status"] != "PUBLISHED": return None
         return to_event(d)
