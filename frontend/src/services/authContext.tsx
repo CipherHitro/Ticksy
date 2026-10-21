@@ -6,6 +6,9 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
+  isOrganizer: boolean;
+  isAttendee: boolean;
+  isAuthenticated: boolean;
   login: (email: string, pass: string) => Promise<{ success: boolean; message?: string }>;
   register: (name: string, email: string, pass: string, role: UserRole) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
@@ -31,15 +34,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
 
   useEffect(() => {
-    if (token && !user) {
+    const storedToken = localStorage.getItem('ticksy_access_token');
+    if (storedToken) {
       getCurrentUser().then(res => {
         if (res.success && res.data) {
           setUser(res.data);
+          setToken(storedToken);
           localStorage.setItem('ticksy_cached_user', JSON.stringify(res.data));
+        } else if (res.code === 'UNAUTHENTICATED' || !res.success) {
+          localStorage.removeItem('ticksy_access_token');
+          localStorage.removeItem('ticksy_cached_user');
+          setUser(null);
+          setToken(null);
         }
       });
+    } else {
+      setUser(null);
+      setToken(null);
     }
-  }, [token, user]);
+  }, []);
 
   const login = async (email: string, pass: string) => {
     setLoading(true);
@@ -48,6 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (res.success && res.data) {
       setUser(res.data.user);
       setToken(res.data.token);
+      localStorage.setItem('ticksy_access_token', res.data.token);
       localStorage.setItem('ticksy_cached_user', JSON.stringify(res.data.user));
       setIsAuthModalOpen(false);
       return { success: true };
@@ -62,6 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (res.success && res.data) {
       setUser(res.data.user);
       setToken(res.data.token);
+      localStorage.setItem('ticksy_access_token', res.data.token);
       localStorage.setItem('ticksy_cached_user', JSON.stringify(res.data.user));
       setIsAuthModalOpen(false);
       return { success: true };
@@ -73,6 +88,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await logoutUser();
     setUser(null);
     setToken(null);
+    localStorage.removeItem('ticksy_access_token');
+    localStorage.removeItem('ticksy_cached_user');
   };
 
   const quickLogin = async (role: UserRole) => {
@@ -88,6 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (res.success && res.data) {
       setUser(res.data.user);
       setToken(res.data.token);
+      localStorage.setItem('ticksy_access_token', res.data.token);
       localStorage.setItem('ticksy_cached_user', JSON.stringify(res.data.user));
       setIsAuthModalOpen(false);
     }
@@ -102,12 +120,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAuthModalOpen(false);
   };
 
+  const isOrganizer = user?.role === 'ORGANIZER' || user?.role === 'ADMIN';
+  const isAttendee = user?.role === 'ATTENDEE';
+  const isAuthenticated = !!user && !!token;
+
   return (
     <AuthContext.Provider
       value={{
         user,
         token,
         loading,
+        isOrganizer,
+        isAttendee,
+        isAuthenticated,
         login,
         register,
         logout,

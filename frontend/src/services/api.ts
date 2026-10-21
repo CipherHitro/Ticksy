@@ -33,6 +33,7 @@ async function apiFetch<T>(
   try {
     const res = await fetch(`${BASE_URL}${endpoint}`, {
       ...options,
+      credentials: 'include',
       headers,
     });
 
@@ -208,58 +209,80 @@ export async function logoutUser(): Promise<void> {
   localStorage.removeItem('ticksy_cached_user');
 }
 
-/* ================= BOOKING & INVENTORY API ================= */
+/* ================= CATALOG & BOOKING API ================= */
+
+export async function createCatalogEvent(eventData: any): Promise<ApiResponse<any>> {
+  return apiFetch('/api/v1/catalog/events', {
+    method: 'POST',
+    body: JSON.stringify(eventData),
+  });
+}
+
+export async function publishCatalogEvent(eventId: string): Promise<ApiResponse<any>> {
+  return apiFetch(`/api/v1/catalog/events/${eventId}/publish`, {
+    method: 'POST',
+  });
+}
 
 export async function getEvents(): Promise<ApiResponse<EventItem[]>> {
-  const res = await apiFetch<any[]>('/api/v1/bookings/events', { method: 'GET' });
-  if (res.success && Array.isArray(res.data)) {
-    const posterMap: Record<string, { subtitle: string; city: string; venue: string; genre: 'music' | 'tech' | 'comedy'; posterUrl: string }> = {
-      'evt-001': {
-        subtitle: 'India’s premier heavy metal and rock spectacle with 12 international acts',
-        city: 'Bengaluru',
-        venue: 'Jayamahal Palace Grounds',
-        genre: 'music',
-        posterUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80',
-      },
-      'evt-002': {
-        subtitle: 'An intimate, stripped-back acoustic evening under the winter sky',
-        city: 'Mumbai',
-        venue: 'Phoenix Marketcity Amphitheatre, Kurla',
-        genre: 'music',
-        posterUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=1200&q=80',
-      },
-      'evt-003': {
-        subtitle: 'Microservices, Event Sourcing, Consensus & Chaos Engineering in Production',
-        city: 'Bengaluru',
-        venue: 'BIEC Convention Hall 3',
-        genre: 'tech',
-        posterUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1200&q=80',
-      },
-      'evt-004': {
-        subtitle: 'Brand-new 90-minute stand-up solo. Strictly 18+.',
-        city: 'Delhi',
-        venue: 'Sirifort Auditorium, August Kranti Marg',
-        genre: 'comedy',
-        posterUrl: 'https://images.unsplash.com/photo-1585699324551-f6c309eedeca?auto=format&fit=crop&w=1200&q=80',
-      },
-      'evt-005': {
-        subtitle: 'High-tech minimal maestro returns to Mumbai for an exclusive sunset session',
-        city: 'Mumbai',
-        venue: 'Mahalaxmi Racecourse Arena',
-        genre: 'music',
-        posterUrl: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1200&q=80',
-      },
-    };
+  const genrePosters: Record<string, string> = {
+    music: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80',
+    tech: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1200&q=80',
+    comedy: 'https://images.unsplash.com/photo-1585699324551-f6c309eedeca?auto=format&fit=crop&w=1200&q=80',
+    theatre: 'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=1200&q=80',
+    workshop: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=1200&q=80',
+  };
 
-    const events: EventItem[] = res.data.map((item) => {
-      const meta = posterMap[item.id] || {
-        subtitle: 'Official live ticketing event on Ticksy',
-        city: 'India',
-        venue: 'Main Arena',
-        genre: 'music',
-        posterUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80',
+  // 1. Fetch live events from Catalog Service
+  const catRes = await apiFetch<any[]>('/api/v1/catalog/events', { method: 'GET' });
+  if (catRes.success && Array.isArray(catRes.data) && catRes.data.length > 0) {
+    const events: EventItem[] = catRes.data.map((item: any) => {
+      const id = item.id || item._id;
+      const genre = (item.category || 'music').toLowerCase();
+      const poster = item.posterUrl || genrePosters[genre] || genrePosters.music;
+      const startsAtDate = item.startsAt ? new Date(item.startsAt) : new Date();
+      const dateStr = startsAtDate.toISOString().split('T')[0];
+      const timeStr = startsAtDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST';
+
+      const tiers = (item.ticketTiers || []).map((t: any) => ({
+        id: t.tierId || t.id || 'tier-1',
+        name: t.name || 'General Admission',
+        priceMinor: t.priceMinor ?? (t.price_minor ?? 100000),
+        currency: t.currency || 'INR',
+        capacity: t.capacity || 100,
+        available: t.capacity || 100,
+        description: t.description || '',
+      }));
+
+      const totalSeats = tiers.reduce((acc: number, t: any) => acc + (t.capacity || 0), 0);
+      const minPrice = item.fromPriceMinor ?? (tiers[0]?.priceMinor || 100000);
+
+      return {
+        id,
+        title: item.title,
+        subtitle: item.description || 'Live Event on Ticksy',
+        city: item.venue?.city || 'India',
+        venue: item.venue?.name || 'Main Stage',
+        date: dateStr,
+        time: timeStr,
+        genre: (['music', 'tech', 'comedy', 'workshop', 'theatre'].includes(genre) ? genre : 'music') as any,
+        priceMinor: minPrice,
+        currency: 'INR',
+        availableSeats: totalSeats,
+        totalSeats,
+        posterUrl: poster,
+        isFeatured: true,
+        tiers,
       };
+    });
 
+    return { success: true, data: events, requestId: catRes.requestId };
+  }
+
+  // 2. Fallback to Booking Service
+  const bookRes = await apiFetch<any[]>('/api/v1/bookings/events', { method: 'GET' });
+  if (bookRes.success && Array.isArray(bookRes.data) && bookRes.data.length > 0) {
+    const events: EventItem[] = bookRes.data.map((item) => {
       const startsAtDate = new Date(item.startsAt);
       const dateStr = startsAtDate.toISOString().split('T')[0];
       const timeStr = startsAtDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST';
@@ -267,20 +290,17 @@ export async function getEvents(): Promise<ApiResponse<EventItem[]>> {
       return {
         id: item.id,
         title: item.title,
-        subtitle: meta.subtitle,
-        city: meta.city,
-        venue: meta.venue,
+        subtitle: 'Live Official Ticketing Event',
+        city: 'India',
+        venue: 'Main Arena',
         date: dateStr,
         time: timeStr,
-        genre: meta.genre,
+        genre: 'music',
         priceMinor: item.minPriceMinor,
         currency: item.currency || 'INR',
         availableSeats: item.availableSeats,
         totalSeats: item.totalSeats,
-        posterUrl: meta.posterUrl,
-        isFeatured: item.id === 'evt-001',
-        isDropCountdown: item.id === 'evt-001',
-        dropTime: `Live now · ${item.availableSeats} seats remaining`,
+        posterUrl: genrePosters.music,
         tiers: (item.tiers || []).map((t: any) => ({
           id: t.tierId,
           name: t.name,
@@ -292,16 +312,12 @@ export async function getEvents(): Promise<ApiResponse<EventItem[]>> {
       };
     });
 
-    return { success: true, data: events, requestId: res.requestId };
+    return { success: true, data: events, requestId: bookRes.requestId };
   }
 
-  return {
-    success: false,
-    code: res.code || 'FETCH_EVENTS_FAILED',
-    message: res.message || 'Failed to fetch events from backend',
-    requestId: res.requestId,
-  };
+  return { success: true, data: [] };
 }
+
 
 export async function getEventSeats(eventId: string): Promise<ApiResponse<any>> {
   return apiFetch(`/api/v1/bookings/events/${eventId}/seats`, { method: 'GET' });

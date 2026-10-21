@@ -1,35 +1,28 @@
-import React, { useState } from 'react';
-import { AuthProvider, useAuth } from './services/authContext';
+import React, { useState, useEffect, useCallback } from 'react';
+import { AuthProvider } from './services/authContext';
 import { Navbar } from './components/common/Navbar';
 import { HeroSection } from './components/landing/HeroSection';
-import { ProofStrip } from './components/landing/ProofStrip';
 import { EventDrops } from './components/landing/EventDrops';
-import { WaitingRoomStory } from './components/landing/WaitingRoomStory';
-import { TryASeatSection } from './components/landing/TryASeatSection';
-import { TicketSection } from './components/landing/TicketSection';
-import { LedgerSection } from './components/landing/LedgerSection';
-import { SupportSection } from './components/landing/SupportSection';
 import { FAQSection } from './components/landing/FAQSection';
 import { Footer } from './components/common/Footer';
 import { AuthModal } from './components/auth/AuthModal';
+import { CreateEventModal } from './components/organizer/CreateEventModal';
 import { EventDetailModal } from './components/booking/EventDetailModal';
 import { CheckoutModal } from './components/booking/CheckoutModal';
 import { MyTicketsModal } from './components/booking/MyTicketsModal';
 import { OrganizerDashboard } from './components/organizer/OrganizerDashboard';
-import { ArchitectureModal } from './components/common/ArchitectureModal';
 import { getEvents } from './services/api';
 import type { EventItem, Seat, Ticket } from './types';
 
 const MainApp: React.FC = () => {
-  const { user } = useAuth();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [checkoutData, setCheckoutData] = useState<{ event: EventItem; seats: Seat[] } | null>(null);
   const [isMyTicketsOpen, setIsMyTicketsOpen] = useState(false);
   const [isOrganizerOpen, setIsOrganizerOpen] = useState(false);
-  const [isArchitectureOpen, setIsArchitectureOpen] = useState(false);
+  const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
 
-  React.useEffect(() => {
+  const fetchEvents = useCallback(() => {
     getEvents().then((res) => {
       if (res.success && res.data) {
         setEvents(res.data);
@@ -37,22 +30,19 @@ const MainApp: React.FC = () => {
     });
   }, []);
 
-  const handleScrollToSection = (sectionId: string) => {
-    const el = document.getElementById(sectionId);
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
+
+  const handleScrollToDrops = () => {
+    const el = document.getElementById('drops-section');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
-  const handleProceedFromTryASeat = (seats: Seat[]) => {
-    const evt = events[0] || null;
-    if (evt) {
-      setCheckoutData({ event: evt, seats });
-    }
-  };
-
   const handleCheckoutSuccess = (_ticket: Ticket) => {
-    // Keep checkout open so user views the generated ticket stub
+    fetchEvents();
   };
 
   return (
@@ -61,64 +51,43 @@ const MainApp: React.FC = () => {
       <Navbar
         onOpenMyTickets={() => setIsMyTicketsOpen(true)}
         onOpenOrganizer={() => setIsOrganizerOpen(true)}
-        onOpenArchitecture={() => setIsArchitectureOpen(true)}
-        onBrowseEvents={() => handleScrollToSection('drops-section')}
-        onScrollToSection={handleScrollToSection}
+        onOpenCreateEvent={() => setIsCreateEventOpen(true)}
+        onBrowseEvents={handleScrollToDrops}
       />
 
       <main>
-        {/* Section 2: Hero (Ink) */}
+        {/* Section 1: Hero */}
         <HeroSection
-          onBrowseEvents={() => handleScrollToSection('drops-section')}
-          onOpenOrganizer={() => {
-            if (user?.role === 'ORGANIZER' || user?.role === 'ADMIN') {
-              setIsOrganizerOpen(true);
-            } else {
-              handleScrollToSection('ledger-section');
-            }
-          }}
+          onBrowseEvents={handleScrollToDrops}
+          onOpenCreateEvent={() => setIsCreateEventOpen(true)}
+          onOpenMyTickets={() => setIsMyTicketsOpen(true)}
         />
 
-        {/* Section 3: Proof strip (Bone) */}
-        <ProofStrip />
-
-        {/* Section 4: This week's drops (Bone) */}
+        {/* Section 2: Live Events Section (Dynamic) */}
         <EventDrops
           events={events}
           onSelectEvent={(evt) => setSelectedEvent(evt)}
+          onOpenCreateEvent={() => setIsCreateEventOpen(true)}
         />
 
-        {/* Section 5: The 7 PM rush: waiting room & seat hold (Ink) */}
-        <WaitingRoomStory />
-
-        {/* Section 6: Try a seat interactive map (Bone) */}
-        <TryASeatSection
-          event={events[0] || null}
-          onProceedWithSeats={handleProceedFromTryASeat}
-        />
-
-        {/* Section 7: Your ticket stub (Ink) */}
-        <TicketSection />
-
-        {/* Section 8: Organizer Ledger showcase (Bone with Brass) */}
-        <LedgerSection onOpenOrganizerDashboard={() => setIsOrganizerOpen(true)} />
-
-        {/* Section 9: Ask Ticksy RAG support with citations (Ink) */}
-        <SupportSection />
-
-        {/* Section 10: FAQ (Bone) */}
+        {/* Section 3: Frequently Asked Questions */}
         <FAQSection />
       </main>
 
-      {/* Section 11: Final call & Footer (Ink) */}
+      {/* Footer */}
       <Footer
-        onBrowseEvents={() => handleScrollToSection('drops-section')}
+        onBrowseEvents={handleScrollToDrops}
         onOpenOrganizer={() => setIsOrganizerOpen(true)}
-        onOpenArchitecture={() => setIsArchitectureOpen(true)}
       />
 
       {/* Modals & Dialogs */}
       <AuthModal />
+
+      <CreateEventModal
+        isOpen={isCreateEventOpen}
+        onClose={() => setIsCreateEventOpen(false)}
+        onEventCreated={fetchEvents}
+      />
 
       <EventDetailModal
         event={selectedEvent}
@@ -144,11 +113,6 @@ const MainApp: React.FC = () => {
       <OrganizerDashboard
         isOpen={isOrganizerOpen}
         onClose={() => setIsOrganizerOpen(false)}
-      />
-
-      <ArchitectureModal
-        isOpen={isArchitectureOpen}
-        onClose={() => setIsArchitectureOpen(false)}
       />
     </div>
   );

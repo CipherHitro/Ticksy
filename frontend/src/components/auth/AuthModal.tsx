@@ -1,32 +1,28 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../services/authContext';
-import { X, ArrowRight, ShieldCheck } from 'lucide-react';
+import { X, ArrowRight, ShieldCheck, UserCheck, Calendar, Lock } from 'lucide-react';
 import type { UserRole } from '../../types';
-import { TicketStub } from '../common/TicketStub';
 
 export const AuthModal: React.FC = () => {
-  const { isAuthModalOpen, closeAuthModal, authModalMode, login, register, quickLogin, loading } = useAuth();
+  const { isAuthModalOpen, closeAuthModal, authModalMode, login, register, loading } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>(authModalMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState<UserRole>('ATTENDEE');
   const [error, setError] = useState<string | null>(null);
-  const [otpMode, setOtpMode] = useState(false);
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
+
+  // Sync mode with trigger
+  React.useEffect(() => {
+    setMode(authModalMode);
+    setError(null);
+  }, [authModalMode, isAuthModalOpen]);
 
   if (!isAuthModalOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (otpMode) {
-      // Complete OTP flow
-      await quickLogin(role);
-      closeAuthModal();
-      return;
-    }
 
     if (mode === 'login') {
       if (!email || !password) {
@@ -35,11 +31,15 @@ export const AuthModal: React.FC = () => {
       }
       const res = await login(email, password);
       if (!res.success) {
-        setError(res.message || 'Invalid credentials');
+        setError(res.message || 'Invalid email or password');
       }
     } else {
       if (!name || !email || !password) {
         setError('Please complete all fields');
+        return;
+      }
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters');
         return;
       }
       const res = await register(name, email, password, role);
@@ -49,23 +49,9 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  const handleOtpChange = (index: number, val: string) => {
-    if (val.length > 1) val = val.slice(-1);
-    const updated = [...otpDigits];
-    updated[index] = val;
-    setOtpDigits(updated);
-
-    // Auto-focus next input
-    if (val && index < 5) {
-      const nextInput = document.getElementById(`otp-${index + 1}`);
-      nextInput?.focus();
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-sm">
-      {/* Outer Modal Container with Split Screen */}
-      <div className="relative w-full max-w-4xl bg-[#EDE8DD] rounded-[3px] border border-hairline-light shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[540px]">
+      <div className="relative w-full max-w-3xl bg-[#EDE8DD] rounded-[3px] border border-hairline-light shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[460px]">
         {/* Close Button */}
         <button
           onClick={closeAuthModal}
@@ -74,21 +60,19 @@ export const AuthModal: React.FC = () => {
           <X className="w-5 h-5" />
         </button>
 
-        {/* Left Panel: 45% on Bone */}
-        <div className="w-full md:w-[48%] p-8 sm:p-10 flex flex-col justify-between bg-[#EDE8DD] text-[#0B0A08]">
+        {/* Left Panel: Form */}
+        <div className="w-full md:w-[55%] p-8 sm:p-10 flex flex-col justify-between bg-[#EDE8DD] text-[#0B0A08]">
           <div>
             <div className="font-mono text-xs uppercase tracking-widest text-[#0B0A08]/60 mb-2">
-              IDENTITY & ACCESS
+              ACCOUNT ACCESS
             </div>
             <h2 className="font-serif text-3xl sm:text-4xl text-[#0B0A08] mb-1">
-              {otpMode ? 'Enter verification code' : mode === 'login' ? 'Welcome to Ticksy' : 'Create an account'}
+              {mode === 'login' ? 'Sign in to Ticksy' : 'Create an account'}
             </h2>
             <p className="font-sans text-xs text-[#0B0A08]/70 mb-6">
-              {otpMode
-                ? 'We sent a 6-digit one-time pass to your email.'
-                : mode === 'login'
-                ? 'Sign in to access your held seats, tickets, or organizer ledger.'
-                : 'Join fans and curators on an audited ticketing protocol.'}
+              {mode === 'login'
+                ? 'Sign in to view your tickets or access your organizer portal.'
+                : 'Join Ticksy to book live event seats or publish your own events.'}
             </p>
 
             {error && (
@@ -97,144 +81,83 @@ export const AuthModal: React.FC = () => {
               </div>
             )}
 
-            {/* Quick Demo Login Shortcut Buttons */}
-            <div className="mb-6 p-3 bg-[#0B0A08]/5 border border-[#0B0A08]/15 rounded-[2px]">
-              <div className="font-mono text-[10px] uppercase text-[#0B0A08]/50 mb-2 font-bold">
-                1-CLICK EVALUATION LOGINS
-              </div>
-              <div className="grid grid-cols-3 gap-2 font-mono text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => quickLogin('ATTENDEE')}
-                  className="py-1.5 px-2 bg-[#0B0A08] text-[#EDE8DD] hover:bg-[#1A1814] rounded-[2px] text-center"
-                >
-                  Attendee
-                </button>
-                <button
-                  type="button"
-                  onClick={() => quickLogin('ORGANIZER')}
-                  className="py-1.5 px-2 bg-[#B8975A] text-white hover:bg-[#A38349] rounded-[2px] text-center font-bold"
-                >
-                  Organizer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => quickLogin('ADMIN')}
-                  className="py-1.5 px-2 bg-emerald-700 text-white hover:bg-emerald-800 rounded-[2px] text-center"
-                >
-                  Admin
-                </button>
-              </div>
-            </div>
-
-            {/* Main Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
-              {otpMode ? (
+              {mode === 'register' && (
                 <div>
-                  <label className="block font-mono text-[10px] uppercase tracking-wider text-[#0B0A08]/60 mb-2">
-                    6-DIGIT CODE
+                  <label className="block font-mono text-[10px] uppercase tracking-wider text-[#0B0A08]/60 mb-1">
+                    FULL NAME
                   </label>
-                  <div className="flex gap-2 justify-between">
-                    {otpDigits.map((digit, idx) => (
-                      <input
-                        key={idx}
-                        id={`otp-${idx}`}
-                        type="text"
-                        maxLength={1}
-                        value={digit}
-                        onChange={(e) => handleOtpChange(idx, e.target.value)}
-                        className="w-10 h-12 text-center font-mono text-lg font-bold bg-[#F5F2EB] border border-[#0B0A08]/20 focus:border-[#FF4F1F] rounded-[2px] outline-none text-[#0B0A08]"
-                      />
-                    ))}
-                  </div>
-                  <div className="mt-2 text-right">
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Rohit Sharma"
+                    className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 focus:border-[#FF4F1F] text-[#0B0A08] px-3 py-2 text-xs font-sans rounded-[2px] outline-none"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-wider text-[#0B0A08]/60 mb-1">
+                  EMAIL ADDRESS
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 focus:border-[#FF4F1F] text-[#0B0A08] px-3 py-2 text-xs font-sans rounded-[2px] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-wider text-[#0B0A08]/60 mb-1">
+                  PASSWORD
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 focus:border-[#FF4F1F] text-[#0B0A08] px-3 py-2 text-xs font-sans rounded-[2px] outline-none"
+                />
+              </div>
+
+              {mode === 'register' && (
+                <div>
+                  <label className="block font-mono text-[10px] uppercase tracking-wider text-[#0B0A08]/60 mb-1">
+                    ROLE / ACCOUNT TYPE
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => setOtpMode(false)}
-                      className="font-mono text-[11px] text-[#0B0A08]/60 hover:text-[#0B0A08]"
+                      onClick={() => setRole('ATTENDEE')}
+                      className={`py-2 px-3 text-xs font-mono rounded-[2px] border flex items-center justify-center gap-1.5 ${
+                        role === 'ATTENDEE'
+                          ? 'bg-[#0B0A08] text-white border-[#0B0A08] font-bold'
+                          : 'bg-transparent text-[#0B0A08]/70 border-[#0B0A08]/20'
+                      }`}
                     >
-                      Use password instead
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Attendee / Fan</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRole('ORGANIZER')}
+                      className={`py-2 px-3 text-xs font-mono rounded-[2px] border flex items-center justify-center gap-1.5 ${
+                        role === 'ORGANIZER'
+                          ? 'bg-[#B8975A] text-white border-[#B8975A] font-bold'
+                          : 'bg-transparent text-[#0B0A08]/70 border-[#0B0A08]/20'
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>Event Organizer</span>
                     </button>
                   </div>
                 </div>
-              ) : (
-                <>
-                  {mode === 'register' && (
-                    <div>
-                      <label className="block font-mono text-[10px] uppercase tracking-wider text-[#0B0A08]/60 mb-1">
-                        FULL NAME
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="e.g. Aarav Sharma"
-                        className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 focus:border-[#FF4F1F] text-[#0B0A08] px-3 py-2 text-xs font-sans rounded-[2px] outline-none"
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase tracking-wider text-[#0B0A08]/60 mb-1">
-                      EMAIL ADDRESS
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@domain.com"
-                      className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 focus:border-[#FF4F1F] text-[#0B0A08] px-3 py-2 text-xs font-sans rounded-[2px] outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-mono text-[10px] uppercase tracking-wider text-[#0B0A08]/60 mb-1">
-                      PASSWORD
-                    </label>
-                    <input
-                      type="password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••••••"
-                      className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 focus:border-[#FF4F1F] text-[#0B0A08] px-3 py-2 text-xs font-sans rounded-[2px] outline-none"
-                    />
-                  </div>
-
-                  {mode === 'register' && (
-                    <div>
-                      <label className="block font-mono text-[10px] uppercase tracking-wider text-[#0B0A08]/60 mb-1">
-                        ACCOUNT TYPE
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setRole('ATTENDEE')}
-                          className={`py-1.5 px-3 text-xs font-mono rounded-[2px] border ${
-                            role === 'ATTENDEE'
-                              ? 'bg-[#0B0A08] text-white border-[#0B0A08]'
-                              : 'bg-transparent text-[#0B0A08]/70 border-[#0B0A08]/20'
-                          }`}
-                        >
-                          Fan / Attendee
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRole('ORGANIZER')}
-                          className={`py-1.5 px-3 text-xs font-mono rounded-[2px] border ${
-                            role === 'ORGANIZER'
-                              ? 'bg-[#B8975A] text-white border-[#B8975A]'
-                              : 'bg-transparent text-[#0B0A08]/70 border-[#0B0A08]/20'
-                          }`}
-                        >
-                          Event Organizer
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
               )}
 
               <button
@@ -242,7 +165,7 @@ export const AuthModal: React.FC = () => {
                 disabled={loading}
                 className="w-full py-3 bg-[#FF4F1F] hover:bg-[#FF4F1F]/90 text-white font-mono text-xs font-semibold rounded-[2px] transition-colors flex items-center justify-center gap-2 mt-4"
               >
-                <span>{loading ? 'Authenticating...' : otpMode ? 'Confirm & Enter' : mode === 'login' ? 'Sign in' : 'Create Account'}</span>
+                <span>{loading ? 'Processing...' : mode === 'login' ? 'Sign in' : 'Create Account'}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </form>
@@ -256,64 +179,63 @@ export const AuthModal: React.FC = () => {
                   onClick={() => { setMode('register'); setError(null); }}
                   className="font-bold text-[#0B0A08] hover:text-[#FF4F1F]"
                 >
-                  Register here
+                  Register here →
                 </button>
               </>
             ) : (
               <>
-                <span className="text-[#0B0A08]/60">Already registered?</span>
+                <span className="text-[#0B0A08]/60">Already have an account?</span>
                 <button
                   onClick={() => { setMode('login'); setError(null); }}
                   className="font-bold text-[#0B0A08] hover:text-[#FF4F1F]"
                 >
-                  Sign in
+                  Sign in here →
                 </button>
               </>
             )}
           </div>
         </div>
 
-        {/* Right Panel: 52% on Ink with seat grid & physical stub */}
-        <div className="w-full md:w-[52%] bg-[#0B0A08] text-[#EDE8DD] p-8 sm:p-10 flex flex-col justify-between border-t md:border-t-0 md:border-l border-hairline-dark paper-grain relative">
+        {/* Right Panel: Role Privileges & Security */}
+        <div className="w-full md:w-[45%] bg-[#0B0A08] text-[#EDE8DD] p-8 sm:p-10 flex flex-col justify-between border-t md:border-t-0 md:border-l border-hairline-dark paper-grain">
           <div>
             <div className="flex items-center justify-between font-mono text-xs text-[#EDE8DD]/50 border-b border-hairline-dark pb-3 mb-6">
-              <span>ASSET VERIFICATION</span>
-              <span className="text-[#FF4F1F]">GATE PROTOCOL</span>
+              <span>ROLE PERMISSIONS</span>
+              <span className="text-[#FF4F1F]">TICKSY AUTH</span>
             </div>
 
-            <div className="transform scale-90 sm:scale-95 origin-top mb-4">
-              <TicketStub
-                ticket={{
-                  id: 'tkt-preview-auth',
-                  serialNumber: 'TK-AUTH889',
-                  eventId: 'evt-001',
-                  eventTitle: 'Bangalore Open Air 2026',
-                  eventDate: '2026-11-14 · 16:00 IST',
-                  venue: 'Jayamahal Palace Grounds',
-                  city: 'Bengaluru',
-                  seats: ['A-1', 'A-2'],
-                  tierName: 'VIP Arena',
-                  attendeeName: 'Verifiable Attendee',
-                  attendeeEmail: 'attendee@ticksy.com',
-                  amountMinor: 499800,
-                  currency: 'INR',
-                  status: 'VALID',
-                  purchasedAt: '2026-10-21T17:03:14Z',
-                  qrCodeValue: 'ticksy:verified:TK-AUTH889',
-                }}
-                showActions={false}
-              />
+            <div className="space-y-4">
+              <div className="p-3.5 bg-[#EDE8DD]/5 border border-hairline-dark rounded-[2px]">
+                <div className="flex items-center gap-2 font-mono text-xs text-[#EDE8DD] font-semibold mb-1">
+                  <UserCheck className="w-4 h-4 text-[#FF4F1F]" />
+                  <span>ATTENDEE ACCOUNT</span>
+                </div>
+                <p className="font-sans text-xs text-[#EDE8DD]/60 leading-relaxed">
+                  Browse live published events, select real seats, complete instant payments, and manage your booked ticket passes.
+                </p>
+              </div>
+
+              <div className="p-3.5 bg-[#EDE8DD]/5 border border-[#B8975A]/30 rounded-[2px]">
+                <div className="flex items-center gap-2 font-mono text-xs text-[#B8975A] font-semibold mb-1">
+                  <Calendar className="w-4 h-4 text-[#B8975A]" />
+                  <span>ORGANIZER ACCOUNT</span>
+                </div>
+                <p className="font-sans text-xs text-[#EDE8DD]/60 leading-relaxed">
+                  Publish events to the Catalog, configure ticket tiers and pricing, and view your real sales balance in the ledger.
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="pt-4 border-t border-hairline-dark space-y-2 font-mono text-xs text-[#EDE8DD]/60">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>RS256 Asymmetric Signed Tokens</span>
+          <div className="pt-6 border-t border-hairline-dark space-y-1.5 font-mono text-xs text-[#EDE8DD]/50">
+            <div className="flex items-center gap-2 text-emerald-400">
+              <ShieldCheck className="w-4 h-4" />
+              <span>RS256 Verified JWT Tokens</span>
             </div>
-            <p className="font-sans text-[11px] text-[#EDE8DD]/40">
-              Tokens issued with 15-minute expiry and verified via JWKS. Passwords securely hashed with bcrypt cost factor 12.
-            </p>
+            <div className="flex items-center gap-2 text-[#EDE8DD]/40">
+              <Lock className="w-3.5 h-3.5" />
+              <span>Bcrypt Cost-12 Hash Security</span>
+            </div>
           </div>
         </div>
       </div>
