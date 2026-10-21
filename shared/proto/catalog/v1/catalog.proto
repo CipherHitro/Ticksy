@@ -1,0 +1,31 @@
+syntax = "proto3";
+package ticksy.catalog.v1;
+
+option java_package = "com.ticksy.catalog.v1";
+option java_multiple_files = true;
+
+message GetEventForBookingRequest {
+  string event_id = 1;
+}
+
+message TierInfo {
+  string tier_id = 1;
+  string name = 2;
+  int32 capacity = 3;
+  int64 price_minor = 4;
+  string currency = 5;
+  string seat_prefix = 6;
+}
+
+message GetEventForBookingResponse {
+  string event_id = 1;
+  string organizer_id = 2;
+  string title = 3;
+  string starts_at = 4;
+  string status = 5;
+  repeated TierInfo tiers = 6;
+}
+
+service CatalogService {
+  rpc GetEventForBooking (GetEventForBookingRequest) returns (GetEventForBookingResponse);
+}

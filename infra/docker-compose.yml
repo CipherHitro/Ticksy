@@ -1,10 +1,7 @@
-# Each service gets its own database - this is the "database per service"
-# pattern we planned. As you add Catalog/Booking/etc., add their DBs here
-# too (auth-db, catalog-db, booking-db...), never share one Postgres
-# instance's schema across services.
-name : ticksy
+name: ticksy
 
 services:
+  # ================= AUTH SERVICE =================
   auth-db:
     image: postgres:16-alpine
     container_name: auth-db
@@ -14,7 +11,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: auth_db
     ports:
-      - '5433:5432' # host:container - 5433 to avoid clashing with a local Postgres on 5432
+      - '5433:5432' # host:container - 5433 to avoid clashing with local Postgres on 5432
     volumes:
       - auth_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -35,15 +32,13 @@ services:
     volumes:
       - ../services/auth/keys:/app/keys:ro
     environment:
-      # Inside Docker's network, services reach each other by container
-      # name, not localhost - this overrides whatever's in .env for the
-      # DB host specifically.
       DATABASE_URL: postgresql://postgres:postgres@auth-db:5432/auth_db?schema=public
       AUTH_SERVICE_URL: http://auth-service:4001
     depends_on:
       auth-db:
         condition: service_healthy
 
+  # ================= API GATEWAY =================
   gateway:
     build:
       context: ../services/gateway
@@ -56,15 +51,77 @@ services:
     environment:
       AUTH_URL: http://auth-service:4001
       AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+      BOOKING_URL: http://booking-service:4003
       PAYMENT_URL: http://payment-service:4004
       LEDGER_URL: http://ledger-service:4005
       NOTIFICATION_URL: http://notification-service:4006
     depends_on:
       - auth-service
+      - booking-service
       - payment-service
       - ledger-service
       - notification-service
 
+  # ================= BOOKING SERVICE =================
+  booking-db:
+    image: mysql:8.0
+    container_name: booking-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: booking_db
+      MYSQL_USER: booking_user
+      MYSQL_PASSWORD: booking_pass
+    ports:
+      - '3307:3306'
+    volumes:
+      - booking_db_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-proot']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  booking-redis:
+    image: redis:7-alpine
+    container_name: booking-redis
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+
+  booking-service:
+    build:
+      context: ../services/booking
+      dockerfile: Dockerfile
+    container_name: booking-service
+    restart: unless-stopped
+    ports:
+      - '4003:4003'
+    environment:
+      PORT: 4003
+      MYSQL_HOST: booking-db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: booking_db
+      MYSQL_USER: booking_user
+      MYSQL_PASSWORD: booking_pass
+      MYSQL_URL: jdbc:mysql://booking-db:3306/booking_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&createDatabaseIfNotExist=true
+      REDIS_HOST: booking-redis
+      REDIS_PORT: 6379
+      AUTH_JWKS_URL: http://auth-service:4001/.well-known/jwks.json
+      JWT_ISSUER: ticksy-auth
+      JWT_AUDIENCE: ticksy-api
+      CATALOG_GRPC_TARGET: catalog-service:50052
+      HOLD_TTL_SECONDS: 600
+      MAX_SEATS_PER_BOOKING: 6
+    depends_on:
+      booking-db:
+        condition: service_healthy
+      booking-redis:
+        condition: service_started
+      auth-service:
+        condition: service_started
+
+  # ================= PAYMENT SERVICE =================
   payment-db:
     image: postgres:16-alpine
     container_name: payment-db
@@ -76,11 +133,11 @@ services:
       POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD}
       POSTGRES_DB: payment_db
     ports:
-      - "5434:5432" # host:container - 5434 to avoid clashing with auth-db on 5433 or local postgres on 5432
+      - '5434:5432' # host:container - 5434 to avoid clashing with auth-db on 5433 or local postgres on 5432
     volumes:
       - payment_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s
       timeout: 5s
       retries: 5
@@ -92,8 +149,8 @@ services:
     container_name: payment-service
     restart: unless-stopped
     ports:
-      - "4004:4004"
-      - "50054:50054"
+      - '4004:4004'
+      - '50054:50054'
     env_file:
       - ../services/payment/.env
     environment:
@@ -108,13 +165,14 @@ services:
       auth-service:
         condition: service_started
 
+  # ================= LEDGER SERVICE =================
   ledger-kurrentdb:
     image: docker.kurrent.io/kurrent-lts/kurrentdb:latest
     container_name: ledger-kurrentdb
     restart: unless-stopped
-    command: ["--insecure"]
+    command: ['--insecure']
     ports:
-      - "2113:2113"
+      - '2113:2113'
     volumes:
       - ledger_kurrentdb_data:/var/lib/eventstore
 
@@ -122,9 +180,9 @@ services:
     image: redis:7-alpine
     container_name: ledger-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ['redis-server', '--appendonly', 'yes']
     ports:
-      - "6381:6379"
+      - '6381:6379'
     volumes:
       - ledger_redis_data:/data
 
@@ -135,7 +193,7 @@ services:
     container_name: ledger-service
     restart: unless-stopped
     ports:
-      - "4005:4005"
+      - '4005:4005'
     env_file:
       - ../services/ledger/.env
     environment:
@@ -149,13 +207,14 @@ services:
       - ledger-redis
       - auth-service
 
+  # ================= NOTIFICATION SERVICE =================
   notification-redis:
     image: redis:7-alpine
     container_name: notification-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ['redis-server', '--appendonly', 'yes']
     ports:
-      - "6382:6379"
+      - '6382:6379'
     volumes:
       - notification_redis_data:/data
 
@@ -164,8 +223,8 @@ services:
     container_name: notification-rabbitmq
     restart: unless-stopped
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - '5672:5672'
+      - '15672:15672'
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -178,7 +237,7 @@ services:
     container_name: notification-service
     restart: unless-stopped
     ports:
-      - "4006:4006"
+      - '4006:4006'
     env_file:
       - ../services/notification/.env
     environment:
@@ -193,10 +252,24 @@ services:
       - notification-rabbitmq
       - auth-service
 
+  # ================= FRONTEND =================
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - '3000:80'
+      - '5173:80'
+    depends_on:
+      - gateway
+
 volumes:
   auth_db_data:
   payment_db_data:
   ledger_kurrentdb_data:
   ledger_redis_data:
+  booking_db_data:
   notification_redis_data:
   notification_rabbitmq_data:
