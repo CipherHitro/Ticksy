@@ -7,7 +7,7 @@ def test_shared_proto_contract_exists():
     proto = ROOT / "shared" / "proto" / "catalog" / "v1" / "catalog.proto"
     text = proto.read_text(encoding="utf-8")
     assert 'package ticksy.catalog.v1;' in text
-    assert 'rpc GetEventForBooking(GetEventForBookingRequest) returns (EventForBooking);' in text
+    assert 'rpc GetEventForBooking (GetEventForBookingRequest) returns (GetEventForBookingResponse);' in text
     assert 'string event_id = 1;' in text
 
 

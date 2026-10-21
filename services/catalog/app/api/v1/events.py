@@ -40,7 +40,7 @@ async def list_events(request: Request, q: str | None = None, category: str | No
         if min_price is not None: price["$gte"] = min_price
         if max_price is not None: price["$lte"] = max_price
         filt["ticketTiers.priceMinor"] = price
-    if sort.lstrip("-") not in {"startsAt", "createdAt", "title", "updatedAt"}: raise HTTPException(400, {"code":"VALIDATION_ERROR","message":"Unsupported sort field"})
+    if sort.lstrip("-") not in {"startsAt", "createdAt", "title", "updatedAt", "fromPriceMinor"}: raise HTTPException(400, {"code":"VALIDATION_ERROR","message":"Unsupported sort field"})
     docs, total = await repo.list_events(filt, page, limit, sort)
     from app.services.events import public_doc
     return response([public_doc(d) for d in docs], {"page":page,"limit":limit,"total":total})
@@ -68,7 +68,7 @@ async def cancel_event(event_id: str, request: Request, principal: Principal = D
 @router.delete("/events/{event_id}", status_code=204)
 async def delete_event(event_id: str, request: Request, principal: Principal = Depends(require_roles("ORGANIZER","ADMIN"))):
     svc = service(request); doc = await svc.repo.get(event_id); svc._assert_owner(doc, principal)
-    if doc["status"] != "DRAFT": raise HTTPException(409, {"code":"CONFLICT","message":"Only DRAFT events can be deleted"})
+    if doc["status"] != "DRAFT": raise HTTPException(409, {"code":"INVALID_EVENT_STATE","message":"Only DRAFT events can be deleted"})
     deleted = await svc.repo.delete_draft(event_id)
     if not deleted: raise HTTPException(409, {"code":"CONFLICT","message":"Event could not be deleted"})
     return Response(status_code=204)

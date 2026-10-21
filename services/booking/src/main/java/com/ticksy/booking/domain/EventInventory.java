@@ -21,7 +21,7 @@ public class EventInventory {
     private Instant startsAt;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", length = 20, nullable = false)
     private EventStatus status = EventStatus.OPEN;
 
     @Column(name = "initialized_at", nullable = false)

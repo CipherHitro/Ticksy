@@ -22,7 +22,7 @@ public class Booking {
     private String eventId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", length = 20, nullable = false)
     private BookingStatus status;
 
     @Column(name = "total_amount_minor", nullable = false)

@@ -135,12 +135,14 @@ services:
 
   booking-service:
     build:
-      context: ../services/booking
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: services/booking/Dockerfile
     container_name: booking-service
     restart: unless-stopped
     ports:
       - '4003:4003'
+    env_file:
+      - ../services/booking/.env
     environment:
       PORT: 4003
       MYSQL_HOST: booking-db

@@ -157,7 +157,7 @@ public class BookingService {
         EventInventory inventory = eventInventoryRepository.findById(request.eventId())
                 .orElseThrow(() -> new ApiException(ErrorCode.EVENT_NOT_FOUND, "Event not found: " + request.eventId()));
 
-        if (inventory.getStatus() != EventStatus.OPEN) {
+        if (inventory.getStatus() != EventStatus.OPEN && inventory.getStatus() != EventStatus.PUBLISHED) {
             throw new ApiException(ErrorCode.EVENT_NOT_ON_SALE, "Event is not open for bookings");
         }
 

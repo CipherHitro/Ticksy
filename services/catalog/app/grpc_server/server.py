@@ -14,18 +14,35 @@ class CatalogGrpcHandler(catalog_pb2_grpc.CatalogServiceServicer):
             await context.abort(grpc.StatusCode.NOT_FOUND,"Event not found")
         if event.get("status") != "PUBLISHED":
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION,"Event is not published")
-        def ts(value):
-            out=Timestamp()
-            if value is not None:
-                if value.tzinfo is None: value=value.replace(tzinfo=timezone.utc)
-                out.FromDatetime(value.astimezone(timezone.utc))
-            return out
-        result=catalog_pb2.EventForBooking(event_id=event["_id"], title=event["title"], organizer_id=event["organizerId"], status=catalog_pb2.PUBLISHED, starts_at=ts(event["startsAt"]))
-        if event.get("saleStartsAt"): result.sale_starts_at.CopyFrom(ts(event["saleStartsAt"]))
-        if event.get("saleEndsAt"): result.sale_ends_at.CopyFrom(ts(event["saleEndsAt"]))
-        for tier in event.get("ticketTiers",[]):
-            result.tiers.add(tier_id=tier["tierId"],name=tier["name"],price_minor=tier["priceMinor"],currency=tier["currency"],capacity=tier["capacity"],seat_prefix=tier["seatPrefix"])
-        return result
+        starts_at = event.get("startsAt")
+        if isinstance(starts_at, datetime):
+            if starts_at.tzinfo is None:
+                starts_at = starts_at.replace(tzinfo=timezone.utc)
+            starts_at_str = starts_at.isoformat().replace("+00:00", "Z")
+        else:
+            starts_at_str = str(starts_at or "")
+
+        tier_objs = []
+        for tier in event.get("ticketTiers", []):
+            tier_objs.append(
+                catalog_pb2.TierInfo(
+                    tier_id=str(tier["tierId"]),
+                    name=str(tier["name"]),
+                    capacity=int(tier["capacity"]),
+                    price_minor=int(tier["priceMinor"]),
+                    currency=str(tier["currency"]),
+                    seat_prefix=str(tier["seatPrefix"]),
+                )
+            )
+
+        return catalog_pb2.GetEventForBookingResponse(
+            event_id=str(event["_id"]),
+            organizer_id=str(event["organizerId"]),
+            title=str(event["title"]),
+            starts_at=starts_at_str,
+            status=str(event.get("status", "PUBLISHED")),
+            tiers=tier_objs,
+        )
 
 async def serve(repository, port: int | None = None):
     server=grpc.aio.server()

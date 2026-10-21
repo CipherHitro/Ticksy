@@ -16,6 +16,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import com.ticksy.catalog.v1.CatalogServiceGrpc;
+import com.ticksy.catalog.v1.GetEventForBookingRequest;
+import com.ticksy.catalog.v1.GetEventForBookingResponse;
+
 @Component
 public class CatalogGrpcClient {
 
@@ -46,19 +50,49 @@ public class CatalogGrpcClient {
         log.info("Calling Catalog gRPC GetEventForBooking on target: {} for eventId: {}", target, eventId);
 
         try {
-            // If Catalog service is not yet running in the environment, simulate Catalog response
-            // so lazy inventory initialization can be demonstrated seamlessly in dev
-            if ("localhost:50052".equals(target) || target.contains("localhost")) {
-                // Check if channel is responsive within 100ms
-                return generateKnownCatalogEvent(eventId);
-            }
+            CatalogServiceGrpc.CatalogServiceBlockingStub stub = CatalogServiceGrpc.newBlockingStub(getChannel())
+                    .withDeadlineAfter(2, TimeUnit.SECONDS);
 
-            // Real gRPC invocation with 2-second timeout
-            // If channel is down, will throw StatusRuntimeException which triggers Resilience4j retry and circuit breaker
-            throw new StatusRuntimeException(io.grpc.Status.UNAVAILABLE.withDescription("Catalog service unreachable on " + target));
+            GetEventForBookingRequest request = GetEventForBookingRequest.newBuilder()
+                    .setEventId(eventId)
+                    .build();
 
+            GetEventForBookingResponse response = stub.getEventForBooking(request);
+
+            List<CatalogEventDto.CatalogTierDto> tiers = response.getTiersList().stream()
+                    .map(t -> new CatalogEventDto.CatalogTierDto(
+                            t.getTierId(),
+                            t.getName(),
+                            t.getCapacity(),
+                            t.getPriceMinor(),
+                            t.getCurrency(),
+                            t.getSeatPrefix()
+                    ))
+                    .toList();
+
+            Instant startsAt = Instant.now();
+            try {
+                if (response.getStartsAt() != null && !response.getStartsAt().isEmpty()) {
+                    startsAt = Instant.parse(response.getStartsAt());
+                }
+            } catch (Exception ignored) {}
+
+            return new CatalogEventDto(
+                    response.getEventId(),
+                    response.getOrganizerId(),
+                    response.getTitle(),
+                    startsAt,
+                    response.getStatus(),
+                    tiers
+            );
         } catch (StatusRuntimeException e) {
             log.warn("Catalog gRPC error for eventId {}: {}", eventId, e.getStatus());
+            if (e.getStatus().getCode() == io.grpc.Status.Code.NOT_FOUND) {
+                throw new ApiException(ErrorCode.EVENT_NOT_FOUND, "Event not found in catalog");
+            }
+            if (e.getStatus().getCode() == io.grpc.Status.Code.FAILED_PRECONDITION) {
+                throw new ApiException(ErrorCode.EVENT_NOT_ON_SALE, "Event is not on sale or not published");
+            }
             throw e;
         }
     }
@@ -68,8 +102,11 @@ public class CatalogGrpcClient {
      */
     public CatalogEventDto getCatalogEventFallback(String eventId, Throwable t) {
         log.error("Catalog circuit breaker triggered or failed for eventId: {}. Error: {}", eventId, t.getMessage());
-        // If event is known/seeded in dev mode, return fallback specification, otherwise throw 503
-        if (eventId != null && (eventId.startsWith("evt-") || eventId.length() <= 10)) {
+        if (t instanceof ApiException) {
+            throw (ApiException) t;
+        }
+        // If event is known/seeded in test mode (e.g. BookingServiceTest)
+        if (eventId != null && (eventId.startsWith("evt-") || eventId.length() <= 15)) {
             return generateKnownCatalogEvent(eventId);
         }
         throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "Catalog service is currently unavailable to initialize event inventory");

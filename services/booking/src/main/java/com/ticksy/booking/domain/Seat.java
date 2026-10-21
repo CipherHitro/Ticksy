@@ -31,7 +31,7 @@ public class Seat {
     private String currency;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", length = 20, nullable = false)
     private SeatStatus status = SeatStatus.AVAILABLE;
 
     @Column(name = "held_by_booking_id", length = 36)

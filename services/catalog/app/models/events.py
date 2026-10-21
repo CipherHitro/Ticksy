@@ -35,9 +35,9 @@ class TicketTierInput(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=1000)
     price_minor: int = Field(alias="priceMinor", ge=0)
-    currency: str = Field(default="INR", min_length=3, max_length=3)
+    currency: str = Field(default="INR", pattern=r"^INR$")
     capacity: int = Field(gt=0, le=1000000)
-    seat_prefix: str = Field(default="S", alias="seatPrefix", min_length=1, max_length=8)
+    seat_prefix: str = Field(default="S", alias="seatPrefix", pattern=r"^[A-Z]{1,4}$")
 
 class TicketTier(TicketTierInput):
     tier_id: str = Field(alias="tierId")
@@ -54,16 +54,25 @@ class EventCreate(BaseModel):
     ends_at: datetime = Field(alias="endsAt")
     timezone: str = "Asia/Kolkata"
     poster_url: HttpUrl | None = Field(default=None, alias="posterUrl")
-    ticket_tiers: list[TicketTierInput] = Field(default_factory=list, alias="ticketTiers")
+    ticket_tiers: list[TicketTierInput] = Field(default_factory=list, alias="ticketTiers", max_length=20)
     sale_starts_at: datetime | None = Field(default=None, alias="saleStartsAt")
     sale_ends_at: datetime | None = Field(default=None, alias="saleEndsAt")
 
     @model_validator(mode="after")
-    def normalize_times(self):
+    def validate_event(self):
         for name in ("starts_at", "ends_at", "sale_starts_at", "sale_ends_at"):
             value = getattr(self, name)
             if value is not None and value.tzinfo is None:
                 raise ValueError(f"{name} must include a timezone")
+        if self.ends_at <= self.starts_at:
+            raise ValueError("endsAt must be after startsAt")
+        if self.sale_starts_at and self.sale_ends_at and self.sale_ends_at <= self.sale_starts_at:
+            raise ValueError("saleEndsAt must be after saleStartsAt")
+        prefixes = [t.seat_prefix for t in self.ticket_tiers]
+        if len(prefixes) != len(set(prefixes)):
+            raise ValueError("Duplicate seatPrefix across ticket tiers is not allowed")
+        if self.poster_url and self.poster_url.scheme != "https":
+            raise ValueError("posterUrl must use https scheme")
         return self
 
 class EventUpdate(BaseModel):
@@ -77,16 +86,26 @@ class EventUpdate(BaseModel):
     starts_at: datetime | None = Field(default=None, alias="startsAt")
     ends_at: datetime | None = Field(default=None, alias="endsAt")
     timezone: str | None = None
-    ticket_tiers: list[TicketTierInput] | None = Field(default=None, alias="ticketTiers")
+    ticket_tiers: list[TicketTierInput] | None = Field(default=None, alias="ticketTiers", max_length=20)
     sale_starts_at: datetime | None = Field(default=None, alias="saleStartsAt")
     sale_ends_at: datetime | None = Field(default=None, alias="saleEndsAt")
 
     @model_validator(mode="after")
-    def require_timezone(self):
+    def validate_update(self):
         for name in ("starts_at", "ends_at", "sale_starts_at", "sale_ends_at"):
             value = getattr(self, name)
             if value is not None and value.tzinfo is None:
                 raise ValueError(f"{name} must include a timezone")
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            raise ValueError("endsAt must be after startsAt")
+        if self.sale_starts_at and self.sale_ends_at and self.sale_ends_at <= self.sale_starts_at:
+            raise ValueError("saleEndsAt must be after saleStartsAt")
+        if self.ticket_tiers:
+            prefixes = [t.seat_prefix for t in self.ticket_tiers]
+            if len(prefixes) != len(set(prefixes)):
+                raise ValueError("Duplicate seatPrefix across ticket tiers is not allowed")
+        if self.poster_url and self.poster_url.scheme != "https":
+            raise ValueError("posterUrl must use https scheme")
         return self
 
 class EventOut(BaseModel):

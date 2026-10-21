@@ -20,6 +20,13 @@ def public_doc(doc):
     if not doc: return None
     doc = dict(doc)
     doc.pop("_mongo_id", None)
+    if "_id" in doc:
+        doc["id"] = str(doc["_id"])
+    tiers = doc.get("ticketTiers") or []
+    if tiers:
+        doc["fromPriceMinor"] = min((t.get("priceMinor", 0) for t in tiers), default=0)
+    else:
+        doc["fromPriceMinor"] = 0
     return iso(doc)
 
 class EventService:
@@ -27,7 +34,10 @@ class EventService:
 
     async def create(self, data: EventCreate, principal):
         stamp = now_utc()
-        base = data.slug or slugify(data.title)
+        if data.slug:
+            base = data.slug
+        else:
+            base = f"{slugify(data.title)}-{uuid4().hex[:6]}"
         doc = data.model_dump(by_alias=True, mode="json", exclude={"slug", "ticketTiers"})
         # Restore typed datetime objects for Mongo's date comparisons and sorting.
         doc.update({"_id": str(uuid4()), "slug": base, "organizerId": principal.sub,
@@ -40,6 +50,7 @@ class EventService:
         for field in ("startsAt", "endsAt", "saleStartsAt", "saleEndsAt"):
             value = getattr(data, {"startsAt":"starts_at", "endsAt":"ends_at", "saleStartsAt":"sale_starts_at", "saleEndsAt":"sale_ends_at"}[field])
             doc[field] = value.astimezone(timezone.utc) if value else None
+        doc["fromPriceMinor"] = min((t.get("priceMinor", 0) for t in doc["ticketTiers"]), default=0)
         try: return public_doc(await self.repo.insert(doc))
         except DuplicateKeyError as exc: raise HTTPException(409, {"code":"CONFLICT", "message":"An event with this slug already exists"}) from exc
 
@@ -59,9 +70,9 @@ class EventService:
         if not changes: return public_doc(doc)
         if doc["status"] == "PUBLISHED":
             forbidden = set(changes) - {"title", "description", "posterUrl"}
-            if forbidden: raise HTTPException(409, {"code":"CONFLICT", "message":"Published events only allow title, description and posterUrl updates"})
+            if forbidden: raise HTTPException(409, {"code":"EVENT_FIELD_LOCKED", "message":"Published events only allow title, description and posterUrl updates"})
         if doc["status"] in {"CANCELLED", "COMPLETED"}:
-            raise HTTPException(409, {"code":"CONFLICT", "message":"This event can no longer be edited"})
+            raise HTTPException(409, {"code":"INVALID_EVENT_STATE", "message":"This event can no longer be edited"})
         for field in ("startsAt", "endsAt", "saleStartsAt", "saleEndsAt"):
             if field in changes and changes[field] is not None:
                 pyfield = {"startsAt":"starts_at", "endsAt":"ends_at", "saleStartsAt":"sale_starts_at", "saleEndsAt":"sale_ends_at"}[field]
@@ -76,7 +87,7 @@ class EventService:
 
     async def publish(self, event_id, principal):
         doc = await self.repo.get(event_id); self._assert_owner(doc, principal)
-        if doc["status"] != "DRAFT": raise HTTPException(409, {"code":"CONFLICT", "message":"Only DRAFT events can be published"})
+        if doc["status"] != "DRAFT": raise HTTPException(409, {"code":"INVALID_EVENT_STATE", "message":"Only DRAFT events can be published"})
         now = now_utc()
         if not doc.get("ticketTiers"): raise HTTPException(400, {"code":"VALIDATION_ERROR", "message":"At least one ticket tier is required"})
         if doc["startsAt"].replace(tzinfo=timezone.utc) <= now: raise HTTPException(400, {"code":"VALIDATION_ERROR", "message":"startsAt must be in the future"})
@@ -87,5 +98,5 @@ class EventService:
 
     async def cancel(self, event_id, principal):
         doc = await self.repo.get(event_id); self._assert_owner(doc, principal)
-        if doc["status"] not in {"DRAFT", "PUBLISHED"}: raise HTTPException(409, {"code":"CONFLICT", "message":"Only DRAFT or PUBLISHED events can be cancelled"})
+        if doc["status"] not in {"DRAFT", "PUBLISHED"}: raise HTTPException(409, {"code":"INVALID_EVENT_STATE", "message":"Only DRAFT or PUBLISHED events can be cancelled"})
         return public_doc(await self.repo.update(event_id, {"status":"CANCELLED", "updatedAt":now_utc(), "version":doc.get("version",1)+1}))
