@@ -138,6 +138,16 @@ export const ROUTES: RouteDefinition[] = [
     description: 'Verify payment from client signature',
   },
   {
+    id: 'payment-create',
+    methods: ['POST'],
+    pathPattern: '/api/v1/payments',
+    regex: /^\/api\/v1\/payments\/?$/,
+    upstream: 'payment',
+    authMode: 'required',
+    roles: 'any',
+    description: 'Create a payment record and Razorpay order',
+  },
+  {
     id: 'payment-get',
     methods: ['GET'],
     pathPattern: '/api/v1/payments/:id',

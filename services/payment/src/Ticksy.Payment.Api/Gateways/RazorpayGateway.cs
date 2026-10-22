@@ -11,6 +11,8 @@ namespace Ticksy.Payment.Api.Gateways;
 
 public interface IRazorpayGateway
 {
+    string KeyId { get; }
+
     /// <summary>Create a Razorpay Order and return its ID.</summary>
     Task<string> CreateOrderAsync(long amountMinor, string currency, string receiptId);
 
@@ -32,6 +34,8 @@ public sealed class RazorpayGateway(IConfiguration config) : IRazorpayGateway
     private readonly string _keyId     = config["RAZORPAY_KEY_ID"] ?? config["Razorpay:KeyId"] ?? throw new InvalidOperationException("Razorpay:KeyId or RAZORPAY_KEY_ID is required");
     private readonly string _keySecret = config["RAZORPAY_KEY_SECRET"] ?? config["Razorpay:KeySecret"] ?? throw new InvalidOperationException("Razorpay:KeySecret or RAZORPAY_KEY_SECRET is required");
     private readonly string _webhookSecret = config["RAZORPAY_WEBHOOK_SECRET"] ?? config["Razorpay:WebhookSecret"] ?? throw new InvalidOperationException("Razorpay:WebhookSecret or RAZORPAY_WEBHOOK_SECRET is required");
+
+    public string KeyId => _keyId;
 
     public Task<string> CreateOrderAsync(long amountMinor, string currency, string receiptId)
     {

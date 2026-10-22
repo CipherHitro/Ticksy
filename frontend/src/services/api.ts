@@ -550,39 +550,83 @@ export async function injectDevEvent(eventType: 'BookingConfirmed' | 'BookingRef
 
 /* ================= PAYMENT API ================= */
 
-export async function verifyPayment(paymentId: string, razorpayPaymentId: string): Promise<ApiResponse<PaymentRecord>> {
-  const res = await apiFetch<PaymentRecord>(`/api/v1/payments/${paymentId}/verify`, {
+export interface CreatePaymentOrderResponse {
+  paymentId: string;
+  bookingId: string;
+  amountMinor: number;
+  currency: string;
+  status: string;
+  providerOrderId: string;
+  keyId: string;
+}
+
+export async function createPaymentOrder(
+  bookingId: string,
+  amountMinor: number,
+  currency = 'INR'
+): Promise<ApiResponse<CreatePaymentOrderResponse>> {
+  return apiFetch<CreatePaymentOrderResponse>('/api/v1/payments', {
+    method: 'POST',
+    body: JSON.stringify({
+      bookingId,
+      amountMinor,
+      currency,
+    }),
+  });
+}
+
+export async function verifyPayment(
+  paymentId: string,
+  razorpayPaymentId: string,
+  razorpaySignature: string
+): Promise<ApiResponse<PaymentRecord>> {
+  return apiFetch<PaymentRecord>(`/api/v1/payments/${paymentId}/verify`, {
     method: 'POST',
     body: JSON.stringify({
       razorpayPaymentId,
-      razorpaySignature: 'simulated_sig_' + Date.now(),
+      razorpaySignature,
     }),
   });
-
-  if (res.success && res.data) {
-    return res;
-  }
-
-  // Booking & Catalog are using mock data until services are ready
-  return {
-    success: true,
-    data: {
-      id: paymentId,
-      bookingId: 'bk_' + Date.now(),
-      amountMinor: 299900,
-      currency: 'INR',
-      status: 'CAPTURED',
-      providerOrderId: 'order_' + Math.random().toString(36).substring(2, 10),
-      createdAt: new Date().toISOString(),
-      capturedAt: new Date().toISOString(),
-    },
-  };
 }
 
 export async function refundPayment(paymentId: string, reason: string): Promise<ApiResponse<any>> {
   return apiFetch(`/api/v1/payments/${paymentId}/refund`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
+  });
+}
+
+/* ================= NOTIFICATION API ================= */
+
+export async function seedNotificationContact(
+  userId: string,
+  email: string,
+  name: string,
+  role = 'ATTENDEE'
+): Promise<ApiResponse<any>> {
+  return apiFetch('/api/v1/notifications/dev/contacts', {
+    method: 'POST',
+    body: JSON.stringify({ userId, email, name, role }),
+  });
+}
+
+export async function sendNotificationEvent(
+  eventType: 'BookingConfirmed' | 'PaymentFailed',
+  payload: Record<string, any>
+): Promise<ApiResponse<any>> {
+  const envelope = {
+    eventId: generateUUID(),
+    eventType,
+    occurredAt: new Date().toISOString(),
+    aggregateId: payload.bookingId || payload.paymentId || generateUUID(),
+    aggregateVersion: 1,
+    requestId: generateUUID(),
+    payload,
+  };
+
+  return apiFetch('/api/v1/notifications/dev/events', {
+    method: 'POST',
+    body: JSON.stringify(envelope),
   });
 }
 

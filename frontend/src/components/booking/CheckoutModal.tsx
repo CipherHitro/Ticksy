@@ -2,9 +2,16 @@ import React, { useState, useEffect } from 'react';
 import type { EventItem, Seat, Ticket } from '../../types';
 import { formatINR, formatTimer } from '../../utils/formatters';
 import { useAuth } from '../../services/authContext';
-import { confirmBookingDev, createBookingHold, verifyPayment } from '../../services/api';
+import {
+  confirmBookingDev,
+  createBookingHold,
+  createPaymentOrder,
+  verifyPayment,
+  seedNotificationContact,
+  sendNotificationEvent,
+} from '../../services/api';
 import { TicketStub } from '../common/TicketStub';
-import { X, Clock, CheckCircle2, ArrowRight, Shield } from 'lucide-react';
+import { X, Clock, CheckCircle2, ArrowRight, Shield, AlertTriangle, CreditCard } from 'lucide-react';
 
 interface CheckoutModalProps {
   event: EventItem | null;
@@ -21,9 +28,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 }) => {
   const { user } = useAuth();
   const [countdown, setCountdown] = useState<number>(480);
-  const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'netbanking'>('upi');
-  const [upiId, setUpiId] = useState('fan@okaxis');
   const [processing, setProcessing] = useState(false);
+  const [statusStep, setStatusStep] = useState<string>('');
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [confirmedTicket, setConfirmedTicket] = useState<Ticket | null>(null);
 
   useEffect(() => {
@@ -35,16 +42,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   if (!event || seats.length === 0) return null;
 
-
   const seatsSubtotal = seats.reduce((acc, s) => acc + s.priceMinor, 0);
   const platformFee = Math.round(seatsSubtotal * 0.05);
   const totalAmount = seatsSubtotal + platformFee;
 
   const handlePay = async () => {
     setProcessing(true);
-    let bookingId = 'bk_' + Date.now();
+    setPaymentError(null);
+    setStatusStep('Holding seats in Redis & MySQL...');
 
-    // 1. Ensure hold is recorded in MySQL + Redis
+    // 1. Hold seats in Booking Service (Redis + MySQL)
     const holdRes = await createBookingHold(
       event.id,
       seats.map((s) => ({
@@ -53,39 +60,168 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       }))
     );
 
-    if (holdRes.success && holdRes.data?.bookingId) {
-      bookingId = holdRes.data.bookingId;
+    if (!holdRes.success || !holdRes.data?.bookingId) {
+      setProcessing(false);
+      setStatusStep('');
+      setPaymentError(holdRes.message || 'Unable to hold selected seats. They may have been taken or expired.');
+      return;
     }
 
-    // 2. Confirm booking in MySQL database & trigger outbox event
-    await confirmBookingDev(bookingId);
+    const bookingId = holdRes.data.bookingId;
 
-    // 3. Payment verification integration
-    await verifyPayment(bookingId, 'rzp_pay_' + Math.random().toString(36).substring(2, 9));
+    // 2. Create Razorpay order on Payment Microservice
+    setStatusStep('Creating Razorpay order on Payment service...');
+    const orderRes = await createPaymentOrder(bookingId, totalAmount, 'INR');
 
-    const ticketSerial = 'TK-' + bookingId.slice(0, 8).toUpperCase();
-    const newTicket: Ticket = {
-      id: bookingId,
-      serialNumber: ticketSerial,
-      eventId: event.id,
-      eventTitle: event.title,
-      eventDate: `${event.date} · ${event.time}`,
-      venue: event.venue,
-      city: event.city,
-      seats: seats.map((s) => s.id),
-      tierName: seats[0]?.tierName || 'General',
-      attendeeName: user?.name || 'Verified Attendee',
-      attendeeEmail: user?.email || 'attendee@ticksy.com',
-      amountMinor: totalAmount,
+    if (!orderRes.success || !orderRes.data) {
+      setProcessing(false);
+      setStatusStep('');
+      setPaymentError(orderRes.message || 'Failed to initiate Razorpay order with Payment service.');
+      return;
+    }
+
+    const orderData = orderRes.data;
+
+    // 3. Ensure attendee contact is registered in Notification service
+    if (user?.id && user?.email) {
+      try {
+        await seedNotificationContact(user.id, user.email, user.name || 'Attendee', user.role || 'ATTENDEE');
+      } catch (e) {
+        console.warn('Seed contact note:', e);
+      }
+    }
+
+    // 4. Ensure Razorpay SDK is loaded
+    if (!(window as any).Razorpay) {
+      setStatusStep('Loading Razorpay Checkout script...');
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error('Failed to load Razorpay SDK'));
+          document.body.appendChild(script);
+        });
+      } catch (err: any) {
+        setProcessing(false);
+        setStatusStep('');
+        setPaymentError('Could not load Razorpay checkout script. Please check your network connection.');
+        return;
+      }
+    }
+
+    setStatusStep('Awaiting payment in Razorpay modal...');
+
+    const options = {
+      key: orderData.keyId || 'rzp_test_TpJLcAQqFOhPiS',
+      amount: totalAmount,
       currency: 'INR',
-      status: 'VALID',
-      purchasedAt: new Date().toISOString(),
-      qrCodeValue: `ticksy:verified:${ticketSerial}:${bookingId}`,
+      name: 'Ticksy Live Events',
+      description: `${event.title} (${seats.length} seat${seats.length > 1 ? 's' : ''})`,
+      order_id: orderData.providerOrderId,
+      prefill: {
+        name: user?.name || '',
+        email: user?.email || '',
+      },
+      theme: {
+        color: '#FF4F1F',
+      },
+      handler: async function (response: any) {
+        setProcessing(true);
+        setStatusStep('Verifying payment signature with backend...');
+
+        try {
+          // 4a. Verify signature with Payment microservice
+          const verifyRes = await verifyPayment(
+            orderData.paymentId,
+            response.razorpay_payment_id,
+            response.razorpay_signature
+          );
+
+          if (!verifyRes.success) {
+            throw new Error(verifyRes.message || 'Payment signature verification failed');
+          }
+
+          setStatusStep('Confirming booking in database...');
+          // 4b. Confirm booking in Booking microservice
+          await confirmBookingDev(bookingId);
+
+          setStatusStep('Dispatching confirmation email via Resend...');
+          // 4c. Trigger real email via Notification microservice (Resend)
+          const confirmedAt = new Date().toISOString();
+          await sendNotificationEvent('BookingConfirmed', {
+            bookingId,
+            userId: user?.id || 'usr_dev',
+            eventId: event.id,
+            eventTitle: event.title,
+            totalAmountMinor: totalAmount,
+            currency: 'INR',
+            confirmedAt,
+          });
+
+          // 4d. Generate confirmed ticket stub
+          const ticketSerial = 'TK-' + bookingId.slice(0, 8).toUpperCase();
+          const newTicket: Ticket = {
+            id: bookingId,
+            serialNumber: ticketSerial,
+            eventId: event.id,
+            eventTitle: event.title,
+            eventDate: `${event.date} · ${event.time}`,
+            venue: event.venue,
+            city: event.city,
+            seats: seats.map((s) => s.id),
+            tierName: seats[0]?.tierName || 'General',
+            attendeeName: user?.name || 'Verified Attendee',
+            attendeeEmail: user?.email || 'attendee@ticksy.com',
+            amountMinor: totalAmount,
+            currency: 'INR',
+            status: 'VALID',
+            purchasedAt: confirmedAt,
+            qrCodeValue: `ticksy:verified:${ticketSerial}:${bookingId}`,
+          };
+
+          setConfirmedTicket(newTicket);
+          onSuccess(newTicket);
+        } catch (err: any) {
+          setPaymentError(err.message || 'Payment verification or confirmation failed.');
+        } finally {
+          setProcessing(false);
+          setStatusStep('');
+        }
+      },
+      modal: {
+        ondismiss: function () {
+          setProcessing(false);
+          setStatusStep('');
+        },
+      },
     };
 
-    setProcessing(false);
-    setConfirmedTicket(newTicket);
-    onSuccess(newTicket);
+    const rzp = new (window as any).Razorpay(options);
+
+    rzp.on('payment.failed', async function (failedResponse: any) {
+      setProcessing(false);
+      setStatusStep('');
+      const reason = failedResponse.error?.description || 'Payment was declined or cancelled.';
+      setPaymentError(reason);
+
+      // Trigger payment-failed email via Notification microservice
+      try {
+        await sendNotificationEvent('PaymentFailed', {
+          paymentId: orderData.paymentId,
+          bookingId,
+          userId: user?.id || 'usr_dev',
+          eventTitle: event.title,
+          amountMinor: totalAmount,
+          currency: 'INR',
+          failedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.error('Failed to notify payment failure:', err);
+      }
+    });
+
+    rzp.open();
   };
 
   return (
@@ -195,128 +331,87 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               </div>
             </div>
 
-            {/* Right Column: Razorpay Payment Simulation Form (7 cols) */}
+            {/* Right Column: Razorpay Checkout Experience (7 cols) */}
             <div className="md:col-span-7 space-y-6">
               <div>
                 <div className="font-mono text-xs uppercase tracking-widest text-[#0B0A08]/60 mb-1">
                   PAYMENT MICROSERVICE · RAZORPAY GATEWAY
                 </div>
                 <h3 className="font-serif text-2xl text-[#0B0A08]">
-                  Select payment method
+                  Razorpay Checkout
                 </h3>
+                <p className="font-sans text-xs text-[#0B0A08]/70 mt-1">
+                  Secure checkout powered by Razorpay. Test mode credentials active.
+                </p>
               </div>
 
-              {/* Method Tabs */}
-              <div className="grid grid-cols-3 gap-2 font-mono text-xs">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('upi')}
-                  className={`py-2 px-3 rounded-[2px] border ${
-                    paymentMethod === 'upi'
-                      ? 'bg-[#0B0A08] text-[#EDE8DD] border-[#0B0A08] font-bold'
-                      : 'bg-[#F5F2EB] text-[#0B0A08]/70 border-[#0B0A08]/20'
-                  }`}
-                >
-                  UPI (Instant)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('card')}
-                  className={`py-2 px-3 rounded-[2px] border ${
-                    paymentMethod === 'card'
-                      ? 'bg-[#0B0A08] text-[#EDE8DD] border-[#0B0A08] font-bold'
-                      : 'bg-[#F5F2EB] text-[#0B0A08]/70 border-[#0B0A08]/20'
-                  }`}
-                >
-                  Debit/Credit Card
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('netbanking')}
-                  className={`py-2 px-3 rounded-[2px] border ${
-                    paymentMethod === 'netbanking'
-                      ? 'bg-[#0B0A08] text-[#EDE8DD] border-[#0B0A08] font-bold'
-                      : 'bg-[#F5F2EB] text-[#0B0A08]/70 border-[#0B0A08]/20'
-                  }`}
-                >
-                  Netbanking
-                </button>
+              {/* Error Alert */}
+              {paymentError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-[2px] font-mono text-xs flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold">Payment Notification</div>
+                    <div className="text-[11px] text-red-700 mt-0.5">{paymentError}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Status Step (when processing) */}
+              {processing && statusStep && (
+                <div className="p-3 bg-[#0B0A08] text-[#EDE8DD] rounded-[2px] font-mono text-xs flex items-center gap-2.5 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-[#FF4F1F] animate-ping" />
+                  <span>{statusStep}</span>
+                </div>
+              )}
+
+              {/* Payment Methods Card */}
+              <div className="bg-[#F5F2EB] border border-[#0B0A08]/15 rounded-[2px] p-4 space-y-3 font-mono text-xs">
+                <div className="flex items-center justify-between text-[#0B0A08]">
+                  <div className="flex items-center gap-2 font-bold">
+                    <CreditCard className="w-4 h-4 text-[#FF4F1F]" />
+                    <span>Accepted Payment Methods</span>
+                  </div>
+                  <span className="text-[10px] uppercase px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold">
+                    Instant Settle
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-[#0B0A08]/80 pt-1">
+                  <div className="flex items-center gap-1.5 p-2 bg-[#EDE8DD] rounded border border-[#0B0A08]/10">
+                    <span className="font-bold text-[#FF4F1F]">UPI</span>
+                    <span>GPay, PhonePe, Paytm, CRED</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 p-2 bg-[#EDE8DD] rounded border border-[#0B0A08]/10">
+                    <span className="font-bold text-[#FF4F1F]">Cards</span>
+                    <span>Visa, Mastercard, RuPay</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 p-2 bg-[#EDE8DD] rounded border border-[#0B0A08]/10">
+                    <span className="font-bold text-[#FF4F1F]">Netbanking</span>
+                    <span>50+ Indian Banks</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 p-2 bg-[#EDE8DD] rounded border border-[#0B0A08]/10">
+                    <span className="font-bold text-[#FF4F1F]">Email Pass</span>
+                    <span className="truncate">{user?.email || 'Registered email'}</span>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-[#0B0A08]/60 pt-1 border-t border-[#0B0A08]/10 flex items-center justify-between">
+                  <span>Confirmation dispatched via:</span>
+                  <span className="font-bold text-[#0B0A08]">Notification Service · Resend</span>
+                </div>
               </div>
 
-              {/* Payment Details Input */}
-              {paymentMethod === 'upi' && (
-                <div className="space-y-3 font-mono text-xs">
-                  <div>
-                    <label className="block text-[10px] uppercase text-[#0B0A08]/60 mb-1">
-                      ENTER UPI ID / VPA
-                    </label>
-                    <input
-                      type="text"
-                      value={upiId}
-                      onChange={(e) => setUpiId(e.target.value)}
-                      placeholder="e.g. mobile@upi or username@okaxis"
-                      className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 focus:border-[#FF4F1F] px-3 py-2 text-xs rounded-[2px] outline-none text-[#0B0A08]"
-                    />
-                  </div>
-                  <div className="flex gap-2 text-[10px] text-[#0B0A08]/60">
-                    <span className="px-2 py-0.5 bg-[#0B0A08]/5 border border-[#0B0A08]/15 rounded-[2px]">Google Pay</span>
-                    <span className="px-2 py-0.5 bg-[#0B0A08]/5 border border-[#0B0A08]/15 rounded-[2px]">PhonePe</span>
-                    <span className="px-2 py-0.5 bg-[#0B0A08]/5 border border-[#0B0A08]/15 rounded-[2px]">Paytm</span>
-                    <span className="px-2 py-0.5 bg-[#0B0A08]/5 border border-[#0B0A08]/15 rounded-[2px]">Cred</span>
-                  </div>
-                </div>
-              )}
-
-              {paymentMethod === 'card' && (
-                <div className="space-y-3 font-mono text-xs">
-                  <div>
-                    <label className="block text-[10px] uppercase text-[#0B0A08]/60 mb-1">CARD NUMBER</label>
-                    <input
-                      type="text"
-                      defaultValue="4242 •••• •••• 4242"
-                      className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 px-3 py-2 text-xs rounded-[2px] text-[#0B0A08]"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] uppercase text-[#0B0A08]/60 mb-1">EXPIRY</label>
-                      <input
-                        type="text"
-                        defaultValue="12/28"
-                        className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 px-3 py-2 text-xs rounded-[2px] text-[#0B0A08]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] uppercase text-[#0B0A08]/60 mb-1">CVV</label>
-                      <input
-                        type="password"
-                        defaultValue="888"
-                        className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 px-3 py-2 text-xs rounded-[2px] text-[#0B0A08]"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {paymentMethod === 'netbanking' && (
-                <div className="font-mono text-xs space-y-2">
-                  <label className="block text-[10px] uppercase text-[#0B0A08]/60">SELECT BANK</label>
-                  <select className="w-full bg-[#F5F2EB] border border-[#0B0A08]/20 px-3 py-2 text-xs rounded-[2px] text-[#0B0A08]">
-                    <option>HDFC Bank</option>
-                    <option>ICICI Bank</option>
-                    <option>State Bank of India (SBI)</option>
-                    <option>Axis Bank</option>
-                    <option>Kotak Mahindra Bank</option>
-                  </select>
-                </div>
-              )}
-
+              {/* Action Button */}
               <button
                 onClick={handlePay}
                 disabled={processing}
-                className="w-full py-3.5 bg-[#FF4F1F] hover:bg-[#FF4F1F]/90 disabled:opacity-50 text-white font-mono text-xs font-semibold rounded-[2px] transition-colors flex items-center justify-center gap-2 shadow-md"
+                className="w-full py-4 bg-[#FF4F1F] hover:bg-[#FF4F1F]/90 disabled:opacity-50 text-white font-mono text-xs font-semibold rounded-[2px] transition-colors flex items-center justify-center gap-2 shadow-md cursor-pointer"
               >
-                <span>{processing ? 'Capturing via Razorpay & Confirming Saga...' : `Pay ${formatINR(totalAmount)}`}</span>
+                <span>
+                  {processing
+                    ? (statusStep || 'Processing with Razorpay...')
+                    : `Proceed to Pay ${formatINR(totalAmount)}`}
+                </span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 

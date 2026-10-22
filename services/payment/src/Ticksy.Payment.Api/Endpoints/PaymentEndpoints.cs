@@ -17,6 +17,106 @@ public static class PaymentEndpoints
     {
         var group = app.MapGroup("/api/v1/payments");
 
+        // ── POST /api/v1/payments ───────────────────────────────────────────
+        // Creates a Payment record and creates an order with Razorpay.
+        group.MapPost("", async (
+            [FromBody] CreatePaymentHttpRequest req,
+            HttpContext ctx,
+            PaymentDbContext db,
+            IRazorpayGateway razorpay,
+            ILoggerFactory loggerFactory,
+            CancellationToken ct) =>
+        {
+            var logger = loggerFactory.CreateLogger(typeof(PaymentEndpoints));
+            var auth = ctx.RequireAuthContext();
+
+            if (req.BookingId == Guid.Empty || req.AmountMinor <= 0)
+                return Problem("VALIDATION_ERROR", "bookingId and positive amountMinor are required", 400, ctx.TraceIdentifier);
+
+            var currency = string.IsNullOrWhiteSpace(req.Currency) ? "INR" : req.Currency.ToUpperInvariant();
+            var idempotencyKey = ctx.Request.Headers.TryGetValue("Idempotency-Key", out var ik) && !string.IsNullOrWhiteSpace(ik)
+                ? ik.ToString()
+                : $"http_{req.BookingId}_{req.AmountMinor}";
+
+            // Idempotency check
+            var existing = await db.Payments
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.IdempotencyKey == idempotencyKey, ct);
+
+            if (existing is not null)
+            {
+                return Results.Ok(new SuccessEnvelope<object>(true, new
+                {
+                    paymentId = existing.Id,
+                    bookingId = existing.BookingId,
+                    amountMinor = existing.AmountMinor,
+                    currency = existing.Currency,
+                    status = existing.Status.ToString(),
+                    providerOrderId = existing.ProviderOrderId,
+                    keyId = razorpay.KeyId
+                }));
+            }
+
+            // Check if duplicate payment for this booking
+            var duplicate = await db.Payments
+                .FirstOrDefaultAsync(p => p.BookingId == req.BookingId, ct);
+
+            if (duplicate is not null)
+            {
+                if (duplicate.Status == PaymentStatus.CREATED)
+                {
+                    return Results.Ok(new SuccessEnvelope<object>(true, new
+                    {
+                        paymentId = duplicate.Id,
+                        bookingId = duplicate.BookingId,
+                        amountMinor = duplicate.AmountMinor,
+                        currency = duplicate.Currency,
+                        status = duplicate.Status.ToString(),
+                        providerOrderId = duplicate.ProviderOrderId,
+                        keyId = razorpay.KeyId
+                    }));
+                }
+                return Problem("CONFLICT", "A payment already exists for this booking", 409, ctx.TraceIdentifier);
+            }
+
+            // Create Razorpay order
+            string providerOrderId;
+            try
+            {
+                providerOrderId = await razorpay.CreateOrderAsync(
+                    req.AmountMinor,
+                    currency,
+                    req.BookingId.ToString("N")[..16]);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Razorpay order creation failed for booking {BookingId}", req.BookingId);
+                return Problem("BAD_GATEWAY", "Payment provider unavailable", 502, ctx.TraceIdentifier);
+            }
+
+            var payment = new Domain.Payment(
+                req.BookingId,
+                auth.UserId,
+                req.AmountMinor,
+                currency,
+                providerOrderId,
+                idempotencyKey);
+
+            db.Payments.Add(payment);
+            await db.SaveChangesAsync(ct);
+
+            return Results.Created($"/api/v1/payments/{payment.Id}", new SuccessEnvelope<object>(true, new
+            {
+                paymentId = payment.Id,
+                bookingId = payment.BookingId,
+                amountMinor = payment.AmountMinor,
+                currency = payment.Currency,
+                status = payment.Status.ToString(),
+                providerOrderId = payment.ProviderOrderId,
+                keyId = razorpay.KeyId
+            }));
+        }).RequireAuthorization();
+
         // ── GET /api/v1/payments/{id} ────────────────────────────────────────
         // Caller must be owner of the payment or ADMIN.
         group.MapGet("/{id:guid}", async (
@@ -146,5 +246,6 @@ public static class PaymentEndpoints
             statusCode: status);
 }
 
+public sealed record CreatePaymentHttpRequest(Guid BookingId, long AmountMinor, string? Currency = "INR");
 public sealed record VerifyPaymentRequest(string RazorpayPaymentId, string RazorpaySignature);
 public sealed record RefundRequest(string Reason);
