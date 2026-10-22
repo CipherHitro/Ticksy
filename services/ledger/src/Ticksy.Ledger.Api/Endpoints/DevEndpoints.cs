@@ -30,12 +30,12 @@ public static class DevEndpoints
 
             if (eventType == "BookingConfirmed")
             {
-                var bookingId = payload.GetProperty("bookingId").GetGuid();
-                var eventId = payload.GetProperty("eventId").GetGuid();
+                var bookingId = ParseGuid(payload, "bookingId");
+                var eventId = ParseGuid(payload, "eventId");
                 var eventTitle = payload.TryGetProperty("eventTitle", out var titleProp) ? titleProp.GetString() ?? "Event" : "Event";
-                var organizerId = payload.GetProperty("organizerId").GetGuid();
-                var paymentId = payload.GetProperty("paymentId").GetGuid();
-                var totalAmountMinor = payload.GetProperty("totalAmountMinor").GetInt64();
+                var organizerId = ParseGuid(payload, "organizerId");
+                var paymentId = ParseGuid(payload, "paymentId");
+                var totalAmountMinor = payload.TryGetProperty("totalAmountMinor", out var tam) ? tam.GetInt64() : 0;
                 var currency = payload.TryGetProperty("currency", out var currProp) ? currProp.GetString() ?? "INR" : "INR";
 
                 var cmd = new RecordSale(
@@ -60,10 +60,10 @@ public static class DevEndpoints
 
             if (eventType == "BookingRefunded")
             {
-                var bookingId = payload.GetProperty("bookingId").GetGuid();
-                var organizerId = payload.GetProperty("organizerId").GetGuid();
-                var refundId = payload.GetProperty("refundId").GetGuid();
-                var refundAmountMinor = payload.GetProperty("refundAmountMinor").GetInt64();
+                var bookingId = ParseGuid(payload, "bookingId");
+                var organizerId = ParseGuid(payload, "organizerId");
+                var refundId = ParseGuid(payload, "refundId");
+                var refundAmountMinor = payload.TryGetProperty("refundAmountMinor", out var ram) ? ram.GetInt64() : 0;
                 var currency = payload.TryGetProperty("currency", out var currProp) ? currProp.GetString() ?? "INR" : "INR";
 
                 var cmd = new RefundSale(
@@ -88,5 +88,15 @@ public static class DevEndpoints
         });
 
         return app;
+    }
+
+    private static Guid ParseGuid(JsonElement el, string prop)
+    {
+        if (el.TryGetProperty(prop, out var p))
+        {
+            if (p.ValueKind == JsonValueKind.String && Guid.TryParse(p.GetString(), out var g))
+                return g;
+        }
+        return Guid.NewGuid();
     }
 }

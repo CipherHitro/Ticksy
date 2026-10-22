@@ -9,6 +9,7 @@ import {
   verifyPayment,
   seedNotificationContact,
   sendNotificationEvent,
+  recordLedgerSale,
 } from '../../services/api';
 import { TicketStub } from '../common/TicketStub';
 import { X, Clock, CheckCircle2, ArrowRight, Shield, AlertTriangle, CreditCard } from 'lucide-react';
@@ -152,14 +153,37 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           await sendNotificationEvent('BookingConfirmed', {
             bookingId,
             userId: user?.id || 'usr_dev',
+            userEmail: user?.email || 'attendee@ticksy.com',
+            userName: user?.name || 'Verified Attendee',
             eventId: event.id,
             eventTitle: event.title,
             totalAmountMinor: totalAmount,
             currency: 'INR',
             confirmedAt,
+            items: seats.map((s) => ({
+              seatLabel: `${s.row}-${s.number}`,
+              tierName: s.tierName || 'Standard',
+              priceMinor: s.priceMinor || Math.round(totalAmount / seats.length),
+            })),
           });
 
-          // 4d. Generate confirmed ticket stub
+          setStatusStep('Posting transaction to KurrentDB Ledger...');
+          // 4d. Post transaction to KurrentDB Event Store & Redis CQRS
+          try {
+            await recordLedgerSale({
+              bookingId,
+              eventId: event.id,
+              eventTitle: event.title,
+              organizerId: event.organizerId || (user?.role === 'ORGANIZER' ? user.id : undefined),
+              paymentId: orderData.paymentId,
+              totalAmountMinor: totalAmount,
+              currency: 'INR',
+            });
+          } catch (ledgerErr) {
+            console.warn('Ledger recording error:', ledgerErr);
+          }
+
+          // 4e. Generate confirmed ticket stub
           const ticketSerial = 'TK-' + bookingId.slice(0, 8).toUpperCase();
           const newTicket: Ticket = {
             id: bookingId,
@@ -178,6 +202,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             status: 'VALID',
             purchasedAt: confirmedAt,
             qrCodeValue: `ticksy:verified:${ticketSerial}:${bookingId}`,
+            organizerId: event.organizerId || (user?.role === 'ORGANIZER' ? user.id : undefined),
           };
 
           setConfirmedTicket(newTicket);

@@ -16,9 +16,20 @@ export const TicketStub: React.FC<TicketStubProps> = ({
   showActions = true,
 }) => {
   const isRefunded = ticket.status === 'REFUNDED';
+  const displaySeats = Array.from(new Set(ticket.seats || []));
 
   return (
-    <div className={`relative border border-hairline-dark bg-[#14120E] text-[#EDE8DD] rounded-[3px] overflow-hidden flex flex-col md:flex-row shadow-2xl transition-all duration-300 ${isRefunded ? 'opacity-50 grayscale' : ''}`}>
+    <div className={`relative border border-hairline-dark bg-[#14120E] text-[#EDE8DD] rounded-[3px] overflow-hidden flex flex-col md:flex-row shadow-2xl transition-all duration-300 ${isRefunded ? 'opacity-60 bg-[#120F0D]' : ''}`}>
+      {/* Visual Refund Watermark Stamp */}
+      {isRefunded && (
+        <div className="absolute top-4 left-1/3 z-20 pointer-events-none">
+          <div className="border-2 border-red-500/80 text-red-500 font-mono font-bold text-xs uppercase px-3 py-1 -rotate-12 tracking-widest bg-black/80 rounded-[2px] shadow-2xl flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+            <span>REFUNDED · CANCELLED</span>
+          </div>
+        </div>
+      )}
+
       {/* Top / Left Notches for physical stub feel */}
       <div className="absolute -top-3 left-1/2 md:left-2/3 -translate-x-1/2 w-6 h-6 rounded-full bg-[#0B0A08] border border-hairline-dark z-10" />
       <div className="absolute -bottom-3 left-1/2 md:left-2/3 -translate-x-1/2 w-6 h-6 rounded-full bg-[#0B0A08] border border-hairline-dark z-10" />
@@ -56,7 +67,7 @@ export const TicketStub: React.FC<TicketStubProps> = ({
           <div>
             <div className="font-mono text-[10px] uppercase tracking-wider text-[#EDE8DD]/50">SEATS RESERVED</div>
             <div className="flex gap-1.5 mt-1">
-              {ticket.seats.map((seat) => (
+              {displaySeats.map((seat) => (
                 <span
                   key={seat}
                   className="font-mono text-xs font-semibold px-2 py-0.5 bg-[#EDE8DD]/10 border border-[#EDE8DD]/20 rounded-[2px]"
@@ -138,7 +149,7 @@ export const TicketStub: React.FC<TicketStubProps> = ({
             {onTransfer && (
               <button
                 onClick={onTransfer}
-                className="flex-1 py-1.5 px-2 bg-[#EDE8DD]/10 hover:bg-[#EDE8DD]/20 text-xs font-mono rounded-[2px] transition-colors border border-hairline-dark"
+                className="flex-1 py-1.5 px-2 bg-[#EDE8DD]/10 hover:bg-[#EDE8DD]/20 text-xs font-mono rounded-[2px] transition-colors border border-hairline-dark cursor-pointer"
               >
                 Transfer
               </button>
@@ -146,11 +157,23 @@ export const TicketStub: React.FC<TicketStubProps> = ({
             {onRefund && (
               <button
                 onClick={onRefund}
-                className="flex-1 py-1.5 px-2 bg-transparent hover:bg-red-950/40 text-red-300 hover:text-red-200 text-xs font-mono rounded-[2px] transition-colors border border-red-500/20"
+                className="flex-1 py-1.5 px-2 bg-transparent hover:bg-red-950/40 text-red-300 hover:text-red-200 text-xs font-mono rounded-[2px] transition-colors border border-red-500/20 cursor-pointer"
               >
                 Refund
               </button>
             )}
+          </div>
+        )}
+
+        {/* Clear non-interactive banner when refunded */}
+        {isRefunded && (
+          <div className="w-full mt-3 p-2 bg-red-950/40 border border-red-500/30 rounded-[2px] text-center">
+            <span className="font-mono text-[10px] text-red-400 font-bold uppercase block tracking-wider">
+              ✓ Refund Completed
+            </span>
+            <span className="font-mono text-[9px] text-red-300/70 block mt-0.5">
+              90% returned · Seats freed
+            </span>
           </div>
         )}
       </div>

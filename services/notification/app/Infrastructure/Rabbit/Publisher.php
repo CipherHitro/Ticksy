@@ -53,40 +53,48 @@ class Publisher
         ?string $requestId = null,
         ?string $reason = null
     ): void {
-        $requestId ??= RequestIdMiddleware::currentRequestId();
+        try {
+            $requestId ??= RequestIdMiddleware::currentRequestId();
 
-        $connection = RabbitConnection::getShared();
-        $channel = $connection->channel();
-        $channel->confirm_select();
+            $connection = RabbitConnection::getShared();
+            $channel = $connection->channel();
+            Topology::setup($channel);
+            $channel->confirm_select();
 
-        $payload = [
-            'notificationId' => $notificationId,
-            'attempt' => $attempt,
-            'requestId' => $requestId,
-        ];
+            $payload = [
+                'notificationId' => $notificationId,
+                'attempt' => $attempt,
+                'requestId' => $requestId,
+            ];
 
-        if ($reason !== null) {
-            $payload['reason'] = $reason;
+            if ($reason !== null) {
+                $payload['reason'] = $reason;
+            }
+
+            $body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';
+
+            $headers = [
+                'x-attempt' => $attempt,
+                'x-request-id' => $requestId,
+            ];
+            if ($reason !== null) {
+                $headers['x-dlq-reason'] = $reason;
+            }
+
+            $message = new AMQPMessage($body, [
+                'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
+                'content_type' => 'application/json',
+                'application_headers' => new AMQPTable($headers),
+            ]);
+
+            $channel->basic_publish($message, Topology::EXCHANGE, $routingKey);
+            $channel->wait_for_pending_acks(5.0);
+            $channel->close();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("RabbitMQ publish failed: {$e->getMessage()}", [
+                'notificationId' => $notificationId,
+                'routingKey' => $routingKey,
+            ]);
         }
-
-        $body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';
-
-        $headers = [
-            'x-attempt' => $attempt,
-            'x-request-id' => $requestId,
-        ];
-        if ($reason !== null) {
-            $headers['x-dlq-reason'] = $reason;
-        }
-
-        $message = new AMQPMessage($body, [
-            'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-            'content_type' => 'application/json',
-            'application_headers' => new AMQPTable($headers),
-        ]);
-
-        $channel->basic_publish($message, Topology::EXCHANGE, $routingKey);
-        $channel->wait_for_pending_acks(5.0);
-        $channel->close();
     }
 }

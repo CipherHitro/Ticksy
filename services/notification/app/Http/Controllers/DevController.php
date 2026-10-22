@@ -23,10 +23,18 @@ class DevController extends Controller
         }
     }
 
-    public function injectEvent(Request $request, EventRouter $router): JsonResponse
+    public function injectEvent(Request $request, EventRouter $router, \App\Application\EmailWorker $worker): JsonResponse
     {
         $envelope = EventEnvelope::fromArray($request->all());
         $record = $router->handle($envelope);
+
+        if ($record !== null) {
+            try {
+                $worker->processNotification($record->id, 1, $envelope->requestId);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Immediate email delivery attempt failed: {$e->getMessage()}");
+            }
+        }
 
         return response()->json([
             'success' => true,

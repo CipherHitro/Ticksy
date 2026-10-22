@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { EventItem, Seat } from '../../types';
-import { formatINR, formatTimer } from '../../utils/formatters';
-import { X, Calendar, MapPin, Clock, ArrowRight } from 'lucide-react';
+import { formatINR } from '../../utils/formatters';
+import { X, Calendar, MapPin, ArrowRight } from 'lucide-react';
 import { getEventSeats } from '../../services/api';
 
 interface EventDetailModalProps {
@@ -33,23 +33,22 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 }) => {
   const [tiers, setTiers] = useState<BackendTier[]>([]);
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
-  const [countdown, setCountdown] = useState<number>(600);
 
-  useEffect(() => {
+  const fetchSeats = () => {
     if (!event) return;
     getEventSeats(event.id).then((res) => {
       if (res.success && res.data?.tiers) {
         setTiers(res.data.tiers);
       }
     });
-  }, [event]);
+  };
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    fetchSeats();
+    const handleUpdate = () => fetchSeats();
+    window.addEventListener('ticksy:booking_updated', handleUpdate);
+    return () => window.removeEventListener('ticksy:booking_updated', handleUpdate);
+  }, [event]);
 
   if (!event) return null;
 
@@ -75,7 +74,6 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     } else {
       if (selectedSeatIds.length >= 6) return;
       setSelectedSeatIds([...selectedSeatIds, seatId]);
-      setCountdown(600);
     }
   };
 
@@ -108,12 +106,13 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
       <div className="relative w-full max-w-4xl bg-[#EDE8DD] text-[#0B0A08] rounded-[3px] border border-hairline-light shadow-2xl overflow-hidden my-8">
-        {/* Close Button */}
+        {/* Close Button - Highly Visible Red */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-20 p-2 bg-[#0B0A08]/10 hover:bg-[#0B0A08]/20 rounded-[2px] transition-colors"
+          aria-label="Close"
+          className="absolute top-4 right-4 z-30 p-2.5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white shadow-xl hover:scale-105 active:scale-95 rounded-full transition-all border border-red-400/50 cursor-pointer"
         >
-          <X className="w-5 h-5 text-[#0B0A08]" />
+          <X className="w-5 h-5 stroke-[2.5]" />
         </button>
 
         {/* Hero Header with Poster Banner */}
@@ -153,10 +152,6 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               <span className="font-mono text-xs uppercase font-bold text-[#0B0A08]">
                 PICK YOUR SEATS (MYSQL SEAT INVENTORY)
               </span>
-              <div className="flex items-center gap-1.5 font-mono text-xs text-[#FF4F1F]">
-                <Clock className="w-3.5 h-3.5" />
-                <span>Hold expires in {formatTimer(countdown)}</span>
-              </div>
             </div>
 
             {/* Stage Bar */}

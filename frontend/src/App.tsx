@@ -43,6 +43,7 @@ const MainApp: React.FC = () => {
 
   const handleCheckoutSuccess = (_ticket: Ticket) => {
     fetchEvents();
+    window.dispatchEvent(new CustomEvent('ticksy:booking_updated'));
   };
 
   return (

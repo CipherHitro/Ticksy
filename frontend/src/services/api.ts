@@ -1,6 +1,6 @@
 import type { EventItem, LedgerBalance, LedgerEntry, PaymentRecord, Ticket, User, UserRole } from '../types';
 
-const BASE_URL = ''; // Relative path, proxied by Vite directly to backend services
+const BASE_URL = ((import.meta as any).env?.VITE_API_BASE_URL || (import.meta as any).env?.VITE_GATEWAY_URL || '').replace(/\/+$/, '');
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -273,6 +273,7 @@ export async function getEvents(): Promise<ApiResponse<EventItem[]>> {
         posterUrl: poster,
         isFeatured: true,
         tiers,
+        organizerId: item.organizerId || item.organizer_id,
       };
     });
 
@@ -474,6 +475,84 @@ export async function requestPayout(amountMinor: number): Promise<ApiResponse<{ 
   };
 }
 
+export async function recordLedgerSale(params: {
+  bookingId: string;
+  eventId: string;
+  eventTitle: string;
+  organizerId?: string;
+  paymentId?: string;
+  totalAmountMinor: number;
+  currency?: string;
+}): Promise<ApiResponse<any>> {
+  const userStr = localStorage.getItem('ticksy_cached_user');
+  let fallbackOrganizer = generateUUID();
+  if (userStr) {
+    try {
+      const u = JSON.parse(userStr);
+      if (u.id && u.id.length > 10 && u.id.includes('-')) {
+        fallbackOrganizer = u.id;
+      }
+    } catch {}
+  }
+
+  const organizerId = params.organizerId || fallbackOrganizer;
+  const paymentId = params.paymentId || generateUUID();
+  const currency = params.currency || 'INR';
+
+  return apiFetch('/api/v1/ledger/dev/events', {
+    method: 'POST',
+    body: JSON.stringify({
+      eventType: 'BookingConfirmed',
+      payload: {
+        bookingId: params.bookingId,
+        eventId: params.eventId,
+        eventTitle: params.eventTitle,
+        organizerId,
+        paymentId,
+        totalAmountMinor: params.totalAmountMinor,
+        currency,
+      },
+    }),
+  });
+}
+
+export async function recordLedgerRefund(params: {
+  bookingId: string;
+  organizerId?: string;
+  refundId?: string;
+  refundAmountMinor: number;
+  currency?: string;
+}): Promise<ApiResponse<any>> {
+  const userStr = localStorage.getItem('ticksy_cached_user');
+  let fallbackOrganizer = generateUUID();
+  if (userStr) {
+    try {
+      const u = JSON.parse(userStr);
+      if (u.id && u.id.length > 10 && u.id.includes('-')) {
+        fallbackOrganizer = u.id;
+      }
+    } catch {}
+  }
+
+  const organizerId = params.organizerId || fallbackOrganizer;
+  const refundId = params.refundId || generateUUID();
+  const currency = params.currency || 'INR';
+
+  return apiFetch('/api/v1/ledger/dev/events', {
+    method: 'POST',
+    body: JSON.stringify({
+      eventType: 'BookingRefunded',
+      payload: {
+        bookingId: params.bookingId,
+        organizerId,
+        refundId,
+        refundAmountMinor: params.refundAmountMinor,
+        currency,
+      },
+    }),
+  });
+}
+
 export async function injectDevEvent(eventType: 'BookingConfirmed' | 'BookingRefunded', amountMinor: number): Promise<ApiResponse<any>> {
   const userStr = localStorage.getItem('ticksy_cached_user');
   let organizerId = generateUUID();
@@ -611,7 +690,7 @@ export async function seedNotificationContact(
 }
 
 export async function sendNotificationEvent(
-  eventType: 'BookingConfirmed' | 'PaymentFailed',
+  eventType: 'BookingConfirmed' | 'PaymentFailed' | 'BookingRefunded',
   payload: Record<string, any>
 ): Promise<ApiResponse<any>> {
   const envelope = {

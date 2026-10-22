@@ -52,6 +52,14 @@ export const TryASeatSection: React.FC<TryASeatSectionProps> = ({
 
   useEffect(() => {
     loadSeatMap();
+    const handleUpdate = () => {
+      setSelectedLabels([]);
+      setActiveBookingId(null);
+      setTimerActive(false);
+      loadSeatMap();
+    };
+    window.addEventListener('ticksy:booking_updated', handleUpdate);
+    return () => window.removeEventListener('ticksy:booking_updated', handleUpdate);
   }, [activeEventId]);
 
   useEffect(() => {

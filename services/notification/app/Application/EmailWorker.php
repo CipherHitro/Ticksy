@@ -49,16 +49,21 @@ class EmailWorker
         $attempt = (int) ($payload['attempt'] ?? 1);
         $requestId = ! empty($payload['requestId']) ? (string) $payload['requestId'] : RequestIdMiddleware::currentRequestId();
 
+        $this->processNotification($notificationId, $attempt, $requestId, $message);
+    }
+
+    public function processNotification(string $notificationId, int $attempt = 1, ?string $requestId = null, ?AMQPMessage $message = null): bool
+    {
+        $requestId ??= RequestIdMiddleware::currentRequestId();
         RequestIdMiddleware::setRequestId($requestId);
 
         $record = $this->repository->find($notificationId);
         if (! $record) {
-            Log::warning("Notification record {$notificationId} not found in Redis, acknowledging job", [
+            Log::warning("Notification record {$notificationId} not found in Redis", [
                 'notificationId' => $notificationId,
             ]);
-            $message->ack();
 
-            return;
+            return false;
         }
 
         // Atomic claim (QUEUED -> SENDING)
@@ -68,13 +73,22 @@ class EmailWorker
                 'notificationId' => $notificationId,
                 'status' => $record->status->value,
             ]);
-            $message->ack();
+            $message?->ack();
 
-            return;
+            return false;
         }
 
         // 1. Resolve contact
         $contact = $this->contactDirectory->get($record->userId);
+        if (! $contact || empty($contact['email'])) {
+            $fallbackEmail = $record->data['userEmail'] ?? $record->data['email'] ?? $record->data['attendeeEmail'] ?? null;
+            if (! empty($fallbackEmail)) {
+                $fallbackName = $record->data['userName'] ?? $record->data['attendeeName'] ?? $record->data['name'] ?? 'Attendee';
+                $this->contactDirectory->upsert($record->userId, $fallbackEmail, $fallbackName, 'ATTENDEE');
+                $contact = ['email' => $fallbackEmail, 'name' => $fallbackName];
+            }
+        }
+
         if (! $contact || empty($contact['email'])) {
             if ($attempt < 3) {
                 Log::warning("Contact not found for user {$record->userId}, scheduling retry {$attempt}", [
@@ -83,9 +97,9 @@ class EmailWorker
                 ]);
                 $this->repository->updateStatus($notificationId, Status::QUEUED);
                 $this->publisher->publishRetry($notificationId, $attempt + 1, $requestId);
-                $message->ack();
+                $message?->ack();
 
-                return;
+                return false;
             }
 
             Log::warning('Contact missing after 3 attempts, marking SKIPPED: NO_CONTACT', [
@@ -95,9 +109,9 @@ class EmailWorker
                 'failureCode' => SkippedReason::NO_CONTACT->value,
                 'failureMessage' => 'Recipient contact information not found in directory',
             ]);
-            $message->ack();
+            $message?->ack();
 
-            return;
+            return false;
         }
 
         $recipientEmail = $contact['email'];
@@ -113,9 +127,9 @@ class EmailWorker
                 'failureCode' => SkippedReason::SUPPRESSED->value,
                 'failureMessage' => 'Recipient address is suppressed due to past bounces/complaints',
             ]);
-            $message->ack();
+            $message?->ack();
 
-            return;
+            return false;
         }
 
         // 3. Check preferences
@@ -128,9 +142,9 @@ class EmailWorker
                 'failureCode' => SkippedReason::OPTED_OUT->value,
                 'failureMessage' => 'Recipient opted out of this category',
             ]);
-            $message->ack();
+            $message?->ack();
 
-            return;
+            return false;
         }
 
         // 4. Render template
@@ -146,9 +160,9 @@ class EmailWorker
                 'failureMessage' => $e->getMessage(),
             ]);
             $this->publisher->publishDlq($notificationId, $attempt, $requestId, 'Template error: '.$e->getMessage());
-            $message->ack();
+            $message?->ack();
 
-            return;
+            return false;
         }
 
         // 5. Send email via Gateway
@@ -170,9 +184,9 @@ class EmailWorker
                 'subject' => $rendered['subject'],
                 'maskedRecipient' => $maskedEmail,
             ]);
-            $message->ack();
+            $message?->ack();
 
-            return;
+            return true;
         }
 
         if ($sendResult->isTransient) {
@@ -184,9 +198,9 @@ class EmailWorker
                 ]);
                 $this->repository->updateStatus($notificationId, Status::QUEUED);
                 $this->publisher->publishRetry($notificationId, $attempt + 1, $requestId);
-                $message->ack();
+                $message?->ack();
 
-                return;
+                return false;
             }
 
             Log::error("Retries exhausted for {$notificationId}, moving to DLQ", [
@@ -198,9 +212,9 @@ class EmailWorker
             ]);
             $this->metrics?->dlqMessage('rabbitmq');
             $this->publisher->publishDlq($notificationId, $attempt, $requestId, 'Exhausted retries');
-            $message->ack();
+            $message?->ack();
 
-            return;
+            return false;
         }
 
         // Permanent failure
@@ -215,6 +229,8 @@ class EmailWorker
             'maskedRecipient' => $maskedEmail,
         ]);
         $this->publisher->publishDlq($notificationId, $attempt, $requestId, $sendResult->failureMessage);
-        $message->ack();
+        $message?->ack();
+
+        return false;
     }
 }

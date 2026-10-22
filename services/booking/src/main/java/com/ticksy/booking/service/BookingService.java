@@ -301,7 +301,6 @@ public class BookingService {
 
             booking.setItems(items);
             bookingRepository.save(booking);
-            bookingItemRepository.saveAll(items);
 
             log.info("Booking hold created successfully: {} for user {} (expires: {})", bookingId, userId, holdExpiresAt);
             return toResponseDto(booking);
@@ -538,6 +537,7 @@ public class BookingService {
 
         List<BookingItemDto> itemDtos = items.stream()
                 .map(i -> new BookingItemDto(i.getSeatId(), i.getTierId(), i.getSeatLabel(), i.getPriceMinor()))
+                .distinct()
                 .toList();
 
         return new BookingResponseDto(

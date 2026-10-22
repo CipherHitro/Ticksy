@@ -18,7 +18,7 @@ public enum BookingStatus {
         return switch (this) {
             case HELD -> EnumSet.of(PAYMENT_PENDING, CANCELLED, EXPIRED).contains(target);
             case PAYMENT_PENDING -> EnumSet.of(CONFIRMED, FAILED, EXPIRED).contains(target);
-            case CONFIRMED -> false; // refund flow later
+            case CONFIRMED -> EnumSet.of(CANCELLED).contains(target);
             case EXPIRED, CANCELLED, FAILED -> false;
         };
     }

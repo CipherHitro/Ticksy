@@ -36,6 +36,7 @@ export interface EventItem {
   isDropCountdown?: boolean;
   dropTime?: string;
   tiers: TicketTier[];
+  organizerId?: string;
 }
 
 export interface Seat {
@@ -78,6 +79,7 @@ export interface Ticket {
   status: 'VALID' | 'TRANSFERRED' | 'REFUNDED';
   purchasedAt: string;
   qrCodeValue: string;
+  organizerId?: string;
 }
 
 export interface PaymentRecord {

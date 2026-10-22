@@ -43,7 +43,7 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
     @Query(value = """
         UPDATE seats
         SET status = 'AVAILABLE', held_by_booking_id = NULL, held_until = NULL, version = version + 1
-        WHERE held_by_booking_id = :bookingId AND status = 'HELD'
+        WHERE held_by_booking_id = :bookingId AND (status = 'HELD' OR status = 'SOLD')
         """, nativeQuery = true)
     int releaseSeatsForBooking(@Param("bookingId") String bookingId);
 
