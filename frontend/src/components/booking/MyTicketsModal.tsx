@@ -1,26 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import type { Ticket } from '../../types';
-import { cancelBooking, getUserBookings, recordLedgerRefund, sendNotificationEvent } from '../../services/api';
+import type { Ticket, TicketTransferRequest } from '../../types';
+import {
+  cancelBooking,
+  getUserBookings,
+  recordLedgerRefund,
+  sendNotificationEvent,
+  createTicketTransfer,
+  getPendingTransfersForUser,
+  acceptTicketTransfer,
+  cancelTicketTransfer,
+} from '../../services/api';
 import { formatINR } from '../../utils/formatters';
 import { useAuth } from '../../services/authContext';
 import { TicketStub } from '../common/TicketStub';
-import { X, Ticket as TicketIcon, AlertCircle, RefreshCw, ShieldAlert, ArrowRight } from 'lucide-react';
+import { X, Ticket as TicketIcon, AlertCircle, RefreshCw, ShieldAlert, ArrowRight, Send, Clock } from 'lucide-react';
 
 interface MyTicketsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTransferId?: string | null;
 }
 
 export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
   isOpen,
   onClose,
+  initialTransferId,
 }) => {
   const { user } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
   const [refundCandidate, setRefundCandidate] = useState<Ticket | null>(null);
-  const [filterTab, setFilterTab] = useState<'ALL' | 'ACTIVE' | 'REFUNDED'>('ALL');
+  const [transferCandidate, setTransferCandidate] = useState<Ticket | null>(null);
+  const [transferEmail, setTransferEmail] = useState('');
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [incomingTransfers, setIncomingTransfers] = useState<TicketTransferRequest[]>([]);
+  const [filterTab, setFilterTab] = useState<'ALL' | 'ACTIVE' | 'TRANSFERS' | 'REFUNDED'>('ALL');
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -37,11 +52,34 @@ export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
     const res = await getUserBookings();
     setLoading(false);
 
+    // Check incoming transfers for current user email
+    if (user?.email) {
+      const pending = getPendingTransfersForUser(user.email);
+      setIncomingTransfers(pending);
+    }
+
+    const allTransfers: TicketTransferRequest[] = JSON.parse(localStorage.getItem('ticksy_ticket_transfers') || '[]');
+
     if (res.success && Array.isArray(res.data)) {
       const mappedTickets: Ticket[] = res.data.map((b: any) => {
         const serial = 'TK-' + b.bookingId.slice(0, 8).toUpperCase();
         const rawSeats = (b.items || []).map((i: any) => i.seatLabel || i);
         const uniqueSeats = Array.from(new Set(rawSeats)).filter(Boolean);
+
+        let status = b.status === 'CONFIRMED' ? 'VALID' : (b.status === 'CANCELLED' || b.status === 'REFUNDED') ? 'REFUNDED' : (b.status as any);
+        let transferredTo: string | undefined = undefined;
+
+        // Check if ticket has transfer state in local storage
+        const matchedTransfer = allTransfers.find((x) => x.ticketId === b.bookingId);
+        if (matchedTransfer) {
+          if (matchedTransfer.status === 'PENDING') {
+            status = 'TRANSFER_PENDING';
+            transferredTo = matchedTransfer.recipientEmail;
+          } else if (matchedTransfer.status === 'ACCEPTED') {
+            status = 'TRANSFERRED';
+            transferredTo = matchedTransfer.recipientEmail;
+          }
+        }
 
         return {
           id: b.bookingId,
@@ -57,13 +95,26 @@ export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
           attendeeEmail: user?.email || 'attendee@ticksy.com',
           amountMinor: b.totalAmountMinor,
           currency: b.currency || 'INR',
-          status: b.status === 'CONFIRMED' ? 'VALID' : (b.status === 'CANCELLED' || b.status === 'REFUNDED') ? 'REFUNDED' : (b.status as any),
+          status,
+          transferredTo,
           purchasedAt: b.createdAt || new Date().toISOString(),
           qrCodeValue: `ticksy:verified:${serial}:${b.bookingId}`,
           organizerId: b.organizerId,
         };
       });
-      setTickets(mappedTickets);
+
+      // Include tickets claimed/transferred to this user
+      const userPurchasedTickets: Ticket[] = JSON.parse(localStorage.getItem('ticksy_user_tickets') || '[]');
+      const myClaimedTickets = userPurchasedTickets.filter((t) => t.attendeeEmail?.toLowerCase() === user?.email?.toLowerCase());
+
+      const combined = [...mappedTickets];
+      for (const claim of myClaimedTickets) {
+        if (!combined.some((t) => t.id === claim.id)) {
+          combined.unshift(claim);
+        }
+      }
+
+      setTickets(combined);
     } else {
       setTickets([]);
     }
@@ -74,6 +125,13 @@ export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
       loadBookings();
     }
   }, [isOpen]);
+
+  // Handle direct claim via URL initialTransferId
+  useEffect(() => {
+    if (isOpen && initialTransferId && user) {
+      handleAcceptIncomingTransfer(initialTransferId);
+    }
+  }, [isOpen, initialTransferId, user]);
 
   if (!isOpen) return null;
 
@@ -136,19 +194,76 @@ export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
     }
   };
 
-  const handleTransfer = (_ticketId: string) => {
-    const recipient = prompt('Enter recipient attendee email address:');
-    if (recipient) {
-      setNotification(`Transfer dispatched to ${recipient}. Ticket serial re-issued.`);
+  const handleInitiateTransfer = (ticket: Ticket) => {
+    setTransferCandidate(ticket);
+    setTransferEmail('');
+    setTransferError(null);
+  };
+
+  const handleConfirmTransfer = () => {
+    if (!transferCandidate || !user) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!transferEmail.trim() || !emailRegex.test(transferEmail.trim())) {
+      setTransferError('Please enter a valid recipient email address.');
+      return;
+    }
+    if (transferEmail.trim().toLowerCase() === user.email.toLowerCase()) {
+      setTransferError('You cannot transfer tickets to your own email address.');
+      return;
+    }
+
+    createTicketTransfer({
+      ticket: transferCandidate,
+      senderUser: user,
+      recipientEmail: transferEmail.trim(),
+    });
+
+    setTickets((prev) =>
+      prev.map((t) => (t.id === transferCandidate.id ? { ...t, status: 'TRANSFER_PENDING', transferredTo: transferEmail.trim() } : t))
+    );
+
+    setTransferCandidate(null);
+    setNotification(`Safe transfer dispatched to ${transferEmail.trim()}. Recipient notified via email with claim link.`);
+    setTimeout(() => setNotification(null), 5000);
+  };
+
+  const handleCancelTransfer = (ticketId: string) => {
+    const allTransfers: TicketTransferRequest[] = JSON.parse(localStorage.getItem('ticksy_ticket_transfers') || '[]');
+    const transfer = allTransfers.find((x) => x.ticketId === ticketId && x.status === 'PENDING');
+    if (transfer) {
+      cancelTicketTransfer(transfer.transferId);
+      setTickets((prev) =>
+        prev.map((t) => (t.id === ticketId ? { ...t, status: 'VALID', transferredTo: undefined } : t))
+      );
+      setNotification('Transfer cancelled. Ticket is now active and safe in your account.');
       setTimeout(() => setNotification(null), 4000);
     }
   };
 
+  const handleAcceptIncomingTransfer = (transferId: string) => {
+    if (!user) return;
+    const newTicket = acceptTicketTransfer(transferId, user);
+    if (newTicket) {
+      setNotification(`Ticket claimed successfully! Added to your passes.`);
+      setTimeout(() => setNotification(null), 5000);
+      loadBookings();
+    }
+  };
+
+  const handleDeclineIncomingTransfer = (transferId: string) => {
+    cancelTicketTransfer(transferId);
+    setIncomingTransfers((prev) => prev.filter((t) => t.transferId !== transferId));
+    setNotification(`Transfer invitation declined. Ticket returned to sender.`);
+    setTimeout(() => setNotification(null), 4000);
+  };
+
   const activeCount = tickets.filter((t) => t.status === 'VALID').length;
+  const transferCount = tickets.filter((t) => t.status === 'TRANSFER_PENDING' || t.status === 'TRANSFERRED').length;
   const refundedCount = tickets.filter((t) => t.status === 'REFUNDED').length;
 
   const filteredTickets = tickets.filter((t) => {
     if (filterTab === 'ACTIVE') return t.status === 'VALID';
+    if (filterTab === 'TRANSFERS') return t.status === 'TRANSFER_PENDING' || t.status === 'TRANSFERRED';
     if (filterTab === 'REFUNDED') return t.status === 'REFUNDED';
     return true;
   });
@@ -193,7 +308,7 @@ export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
           </div>
 
           {/* Filter Tabs */}
-          <div className="flex items-center gap-2 mt-4 pt-3 border-t border-hairline-dark/60 font-mono text-xs">
+          <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-hairline-dark/60 font-mono text-xs">
             <button
               onClick={() => setFilterTab('ALL')}
               className={`px-3 py-1 rounded-[2px] border transition-colors cursor-pointer ${
@@ -215,6 +330,16 @@ export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
               Active ({activeCount})
             </button>
             <button
+              onClick={() => setFilterTab('TRANSFERS')}
+              className={`px-3 py-1 rounded-[2px] border transition-colors cursor-pointer ${
+                filterTab === 'TRANSFERS'
+                  ? 'bg-amber-600 text-white border-amber-600'
+                  : 'bg-[#EDE8DD]/5 text-[#EDE8DD]/70 border-hairline-dark hover:bg-[#EDE8DD]/10'
+              }`}
+            >
+              Transfers ({transferCount})
+            </button>
+            <button
               onClick={() => setFilterTab('REFUNDED')}
               className={`px-3 py-1 rounded-[2px] border transition-colors cursor-pointer ${
                 filterTab === 'REFUNDED'
@@ -226,6 +351,53 @@ export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Incoming Transfers Banner (If any) */}
+        {incomingTransfers.length > 0 && (
+          <div className="mx-6 sm:mx-8 mt-4 p-4 bg-amber-950/60 border border-amber-500/50 rounded-[3px] text-amber-200 shrink-0 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
+                <span className="font-mono text-xs font-bold uppercase tracking-wider text-amber-300">
+                  📩 INCOMING TICKET TRANSFER ({incomingTransfers.length})
+                </span>
+              </div>
+              <span className="font-mono text-[10px] text-amber-300/60">
+                Action required within 48 hours
+              </span>
+            </div>
+
+            {incomingTransfers.map((req) => (
+              <div
+                key={req.transferId}
+                className="bg-[#0B0A08]/80 p-3 rounded-[2px] border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
+              >
+                <div>
+                  <div className="font-serif text-base text-[#EDE8DD]">
+                    {req.ticketSnapshot.eventTitle}
+                  </div>
+                  <div className="font-mono text-[11px] text-[#EDE8DD]/70">
+                    From: <strong className="text-amber-300">{req.senderName}</strong> ({req.senderEmail}) · Seats: {req.ticketSnapshot.seats.join(', ')}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => handleAcceptIncomingTransfer(req.transferId)}
+                    className="flex-1 sm:flex-none px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs rounded-[2px] cursor-pointer transition-colors"
+                  >
+                    Accept Ticket
+                  </button>
+                  <button
+                    onClick={() => handleDeclineIncomingTransfer(req.transferId)}
+                    className="flex-1 sm:flex-none px-3 py-1.5 bg-transparent hover:bg-white/10 text-amber-300 font-mono text-xs rounded-[2px] border border-amber-500/30 cursor-pointer transition-colors"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {notification && (
           <div className="mx-6 sm:mx-8 mt-4 p-3 bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-mono rounded-[2px] flex items-center gap-2 shrink-0">
@@ -241,6 +413,8 @@ export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
               <p>
                 {filterTab === 'REFUNDED'
                   ? 'No refunded tickets on record.'
+                  : filterTab === 'TRANSFERS'
+                  ? 'No transferred or pending transfer tickets.'
                   : filterTab === 'ACTIVE'
                   ? 'No active bookings found for your account.'
                   : user
@@ -257,7 +431,8 @@ export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
                 <TicketStub
                   key={t.id}
                   ticket={t}
-                  onTransfer={() => handleTransfer(t.id)}
+                  onTransfer={() => handleInitiateTransfer(t)}
+                  onCancelTransfer={() => handleCancelTransfer(t.id)}
                   onRefund={() => handlePromptRefund(t)}
                   showActions={true}
                 />
@@ -265,6 +440,73 @@ export const MyTicketsModal: React.FC<MyTicketsModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Safe Ticket Transfer Dialog */}
+        {transferCandidate && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <div className="w-full max-w-md bg-[#14120E] text-[#EDE8DD] border border-amber-500/40 p-6 rounded-[2px] shadow-2xl space-y-4 font-mono text-xs">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                <Send className="w-4 h-4 shrink-0" />
+                <span>Safe Ticket Transfer Protocol</span>
+              </div>
+
+              <div className="space-y-1 font-sans text-xs text-[#EDE8DD]/80">
+                <p>
+                  Transferring: <strong className="text-[#EDE8DD]">{transferCandidate.eventTitle}</strong> ({transferCandidate.seats.join(', ')})
+                </p>
+                <p className="text-[11px] text-[#EDE8DD]/60">
+                  Serial: {transferCandidate.serialNumber}
+                </p>
+              </div>
+
+              <div className="p-3 bg-[#0B0A08] border border-amber-500/20 rounded-[2px] space-y-2 text-[11px]">
+                <div className="font-bold text-amber-300">🛡️ Safe Transfer Guarantee:</div>
+                <ul className="space-y-1 text-[#EDE8DD]/70 list-disc list-inside text-[10px]">
+                  <li>Recipient receives an official email notification with a 48-hour claim link.</li>
+                  <li>If the email is mistyped or ignored, the ticket reverts automatically to you.</li>
+                  <li>You can cancel and reclaim this ticket at any time before it is claimed.</li>
+                </ul>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[11px] uppercase tracking-wider text-[#EDE8DD]/70 font-mono">
+                  Recipient Attendee Email:
+                </label>
+                <input
+                  type="email"
+                  value={transferEmail}
+                  onChange={(e) => {
+                    setTransferEmail(e.target.value);
+                    setTransferError(null);
+                  }}
+                  placeholder="e.g. friend@example.com"
+                  className="w-full px-3 py-2 bg-[#0B0A08] border border-hairline-dark text-[#EDE8DD] font-mono text-xs rounded-[2px] focus:outline-none focus:border-amber-500"
+                />
+                {transferError && (
+                  <p className="text-red-400 text-[10px] font-mono mt-1">{transferError}</p>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setTransferCandidate(null)}
+                  className="flex-1 py-2 px-3 bg-[#EDE8DD]/10 hover:bg-[#EDE8DD]/20 rounded-[2px] transition-colors text-center cursor-pointer font-mono"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmTransfer}
+                  className="flex-1 py-2 px-3 bg-amber-500 hover:bg-amber-400 text-black font-bold font-mono rounded-[2px] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>Dispatch Transfer</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Refund Policy Confirmation Dialog */}
         {refundCandidate && (

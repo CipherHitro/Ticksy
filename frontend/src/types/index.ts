@@ -76,10 +76,28 @@ export interface Ticket {
   attendeeEmail: string;
   amountMinor: number;
   currency: string;
-  status: 'VALID' | 'TRANSFERRED' | 'REFUNDED';
+  status: 'VALID' | 'TRANSFERRED' | 'TRANSFER_PENDING' | 'REFUNDED';
+  transferredTo?: string;
   purchasedAt: string;
   qrCodeValue: string;
   organizerId?: string;
+  transferDetails?: {
+    transferId: string;
+    recipientEmail: string;
+    expiresAt: string;
+  };
+}
+
+export interface TicketTransferRequest {
+  transferId: string;
+  ticketId: string;
+  senderEmail: string;
+  senderName: string;
+  recipientEmail: string;
+  ticketSnapshot: Ticket;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED';
+  createdAt: string;
+  expiresAt: string;
 }
 
 export interface PaymentRecord {

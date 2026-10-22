@@ -76,23 +76,23 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center gap-3">
           {user ? (
             <div className="flex items-center gap-2">
+              {/* My Tickets button (for BOTH Attendee and Organizer) */}
+              <button
+                onClick={onOpenMyTickets}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-[2px] bg-[#EDE8DD]/10 hover:bg-[#EDE8DD]/20 border border-hairline-dark text-[#EDE8DD] transition-colors cursor-pointer"
+              >
+                <Ticket className="w-3.5 h-3.5" />
+                <span>My Tickets</span>
+              </button>
+
               {/* If Organizer: "+ Create Event" button */}
-              {isOrganizer ? (
+              {isOrganizer && (
                 <button
                   onClick={onOpenCreateEvent}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-[2px] bg-[#FF4F1F] hover:bg-[#FF4F1F]/90 text-white font-semibold transition-colors shadow"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-[2px] bg-[#FF4F1F] hover:bg-[#FF4F1F]/90 text-white font-semibold transition-colors shadow cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Create Event</span>
-                </button>
-              ) : (
-                /* Attendee: My Tickets button */
-                <button
-                  onClick={onOpenMyTickets}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded-[2px] bg-[#EDE8DD]/10 hover:bg-[#EDE8DD]/20 border border-hairline-dark text-[#EDE8DD] transition-colors"
-                >
-                  <Ticket className="w-3.5 h-3.5" />
-                  <span>My Tickets</span>
                 </button>
               )}
 

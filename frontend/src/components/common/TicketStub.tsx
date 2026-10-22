@@ -6,6 +6,7 @@ interface TicketStubProps {
   ticket: Ticket;
   onTransfer?: () => void;
   onRefund?: () => void;
+  onCancelTransfer?: () => void;
   showActions?: boolean;
 }
 
@@ -13,19 +14,41 @@ export const TicketStub: React.FC<TicketStubProps> = ({
   ticket,
   onTransfer,
   onRefund,
+  onCancelTransfer,
   showActions = true,
 }) => {
   const isRefunded = ticket.status === 'REFUNDED';
+  const isTransferred = ticket.status === 'TRANSFERRED';
+  const isTransferPending = ticket.status === 'TRANSFER_PENDING';
   const displaySeats = Array.from(new Set(ticket.seats || []));
 
   return (
-    <div className={`relative border border-hairline-dark bg-[#14120E] text-[#EDE8DD] rounded-[3px] overflow-hidden flex flex-col md:flex-row shadow-2xl transition-all duration-300 ${isRefunded ? 'opacity-60 bg-[#120F0D]' : ''}`}>
+    <div className={`relative border border-hairline-dark bg-[#14120E] text-[#EDE8DD] rounded-[3px] overflow-hidden flex flex-col md:flex-row shadow-2xl transition-all duration-300 ${isRefunded || isTransferred ? 'opacity-60 bg-[#120F0D]' : ''}`}>
       {/* Visual Refund Watermark Stamp */}
       {isRefunded && (
         <div className="absolute top-4 left-1/3 z-20 pointer-events-none">
           <div className="border-2 border-red-500/80 text-red-500 font-mono font-bold text-xs uppercase px-3 py-1 -rotate-12 tracking-widest bg-black/80 rounded-[2px] shadow-2xl flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
             <span>REFUNDED · CANCELLED</span>
+          </div>
+        </div>
+      )}
+
+      {/* Visual Transferred Watermark Stamp */}
+      {isTransferred && (
+        <div className="absolute top-4 left-1/3 z-20 pointer-events-none">
+          <div className="border-2 border-zinc-500/80 text-zinc-400 font-mono font-bold text-xs uppercase px-3 py-1 -rotate-12 tracking-widest bg-black/80 rounded-[2px] shadow-2xl flex items-center gap-1.5">
+            <span>TRANSFERRED · REASSIGNED</span>
+          </div>
+        </div>
+      )}
+
+      {/* Visual Transfer Pending Watermark Stamp */}
+      {isTransferPending && (
+        <div className="absolute top-4 left-1/3 z-20 pointer-events-none">
+          <div className="border-2 border-amber-500/80 text-amber-400 font-mono font-bold text-xs uppercase px-3 py-1 -rotate-6 tracking-widest bg-black/90 rounded-[2px] shadow-2xl flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span>TRANSFER PENDING CLAIM</span>
           </div>
         </div>
       )}
@@ -90,8 +113,8 @@ export const TicketStub: React.FC<TicketStubProps> = ({
       <div className="p-6 md:p-8 md:w-64 bg-[#100F0C] flex flex-col items-center justify-between text-center relative">
         <div className="w-full flex justify-between items-center text-[10px] font-mono text-[#EDE8DD]/40 mb-2">
           <span>GATE SCAN</span>
-          <span className={isRefunded ? 'text-red-400 font-bold' : 'text-emerald-400'}>
-            {isRefunded ? 'REVOKED' : 'VERIFIED'}
+          <span className={isRefunded ? 'text-red-400 font-bold' : isTransferred ? 'text-zinc-500 font-bold' : isTransferPending ? 'text-amber-400 font-bold' : 'text-emerald-400'}>
+            {isRefunded ? 'REVOKED' : isTransferred ? 'REASSIGNED' : isTransferPending ? 'CLAIM PENDING' : 'VERIFIED'}
           </span>
         </div>
 
@@ -143,8 +166,8 @@ export const TicketStub: React.FC<TicketStubProps> = ({
           ADMIT 1 PERSON PER SEAT
         </div>
 
-        {/* Action buttons if not refunded */}
-        {showActions && !isRefunded && (
+        {/* Action buttons if ticket is active and valid */}
+        {showActions && !isRefunded && !isTransferred && !isTransferPending && (
           <div className="w-full flex gap-2 mt-4 pt-3 border-t border-hairline-dark">
             {onTransfer && (
               <button
@@ -162,6 +185,38 @@ export const TicketStub: React.FC<TicketStubProps> = ({
                 Refund
               </button>
             )}
+          </div>
+        )}
+
+        {/* Action banner when transfer is pending acceptance */}
+        {isTransferPending && (
+          <div className="w-full mt-3 p-2.5 bg-amber-950/40 border border-amber-500/30 rounded-[2px] text-center space-y-2">
+            <span className="font-mono text-[10px] text-amber-300 font-bold uppercase block tracking-wider">
+              ⏳ Claim Pending (48h)
+            </span>
+            <span className="font-mono text-[9px] text-amber-200/70 block truncate">
+              {ticket.transferredTo ? `To: ${ticket.transferredTo}` : 'Dispatched to recipient'}
+            </span>
+            {onCancelTransfer && (
+              <button
+                onClick={onCancelTransfer}
+                className="w-full py-1 px-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-mono text-[10px] rounded-[2px] border border-amber-500/40 cursor-pointer transition-colors"
+              >
+                Cancel & Reclaim Ticket
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Informative banner when transferred out */}
+        {isTransferred && (
+          <div className="w-full mt-3 p-2 bg-zinc-900/60 border border-zinc-700/50 rounded-[2px] text-center">
+            <span className="font-mono text-[10px] text-zinc-400 font-bold uppercase block tracking-wider">
+              ✓ Transferred Out
+            </span>
+            <span className="font-mono text-[9px] text-zinc-500 block mt-0.5 truncate">
+              {ticket.transferredTo ? `Claimed by ${ticket.transferredTo}` : 'Claimed by recipient'}
+            </span>
           </div>
         )}
 

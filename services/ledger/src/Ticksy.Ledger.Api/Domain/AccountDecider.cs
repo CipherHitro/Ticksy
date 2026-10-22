@@ -129,14 +129,17 @@ public static class AccountDecider
         if (state.RefundedBookingIds.Contains(cmd.BookingId))
             return Array.Empty<AccountEvent>();
 
-        // Unknown booking: ignore safely (or reject)
-        if (!state.RecordedSales.TryGetValue(cmd.BookingId, out var originalSale))
-            return Array.Empty<AccountEvent>();
+        // Full refund: reverses original gross, fee, and net, or uses command payload
+        long grossRefunded = cmd.GrossRefundedMinor;
+        long feeReversed = (long)Math.Round(grossRefunded * 0.05);
+        long netReversed = grossRefunded - feeReversed;
 
-        // Full refund: reverses original gross, fee, and net
-        var grossRefunded = originalSale.GrossMinor;
-        var feeReversed = originalSale.FeeMinor;
-        var netReversed = originalSale.NetMinor;
+        if (state.RecordedSales.TryGetValue(cmd.BookingId, out var originalSale))
+        {
+            grossRefunded = originalSale.GrossMinor;
+            feeReversed = originalSale.FeeMinor;
+            netReversed = originalSale.NetMinor;
+        }
 
         var metadata = new EventMetadata(
             SchemaVersion: 1,

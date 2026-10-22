@@ -92,15 +92,6 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     };
   });
 
-  // Group by row
-  const rowLabels = new Map<string, string[]>();
-  for (const label of seatMap.keys()) {
-    const row = label.split('-')[0];
-    if (!rowLabels.has(row)) rowLabels.set(row, []);
-    rowLabels.get(row)!.push(label);
-  }
-  const sortedRows = Array.from(rowLabels.keys()).sort();
-
   const subtotalMinor = selectedSeatsData.reduce((acc, s) => acc + s.priceMinor, 0);
 
   return (
@@ -147,52 +138,64 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
         {/* Content Body */}
         <div className="p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Seat Selection Interactive Grid (7 cols) */}
+          {/* Seat Selection Interactive Grid (7 cols) */}
           <div className="lg:col-span-7 space-y-4">
             <div className="flex items-center justify-between border-b border-[#0B0A08]/15 pb-2">
               <span className="font-mono text-xs uppercase font-bold text-[#0B0A08]">
                 PICK YOUR SEATS (MYSQL SEAT INVENTORY)
               </span>
+              <span className="font-mono text-[11px] text-[#0B0A08]/60">
+                Max 6 seats per booking
+              </span>
             </div>
 
             {/* Stage Bar */}
-            <div className="py-1.5 bg-[#0B0A08]/10 text-center font-mono text-[10px] text-[#0B0A08]/60 tracking-widest uppercase rounded-[2px]">
-              FRONT STAGE
+            <div className="py-2 bg-[#0B0A08]/10 text-center font-mono text-[11px] font-bold text-[#0B0A08]/70 tracking-widest uppercase rounded-[2px] border border-[#0B0A08]/10">
+              ▲ FRONT STAGE / SCREEN ▲
             </div>
 
-            {/* Grid */}
-            <div className="space-y-2 py-2 overflow-x-auto">
-              {sortedRows.length === 0 ? (
-                <div className="text-center py-8 font-mono text-xs text-[#0B0A08]/50">
-                  Loading seats from MySQL...
+            {/* Seat Map Area */}
+            <div className="space-y-6 max-h-[460px] overflow-y-auto pr-2">
+              {tiers.length === 0 ? (
+                <div className="text-center py-12 font-mono text-xs text-[#0B0A08]/50">
+                  Loading seat inventory from MySQL database...
                 </div>
               ) : (
-                sortedRows.map((row) => {
-                  const labels = (rowLabels.get(row) || []).sort((a, b) => {
-                    const numA = parseInt(a.split('-')[1]) || 0;
-                    const numB = parseInt(b.split('-')[1]) || 0;
-                    return numA - numB;
-                  });
-
+                tiers.map((tier) => {
+                  const availableCount = tier.seats.filter((s) => s.status === 'AVAILABLE').length;
                   return (
-                    <div key={row} className="flex items-center justify-center gap-2 min-w-[360px]">
-                      <span className="font-mono text-xs w-5 font-bold text-[#0B0A08]/50">
-                        {row}
-                      </span>
-                      <div className="flex gap-1.5">
-                        {labels.map((seatId) => {
-                          const info = seatMap.get(seatId);
-                          const isAvailable = info?.status === 'AVAILABLE';
-                          const isSelected = selectedSeatIds.includes(seatId);
-                          const isHeld = info?.status === 'HELD';
-                          const isSold = info?.status === 'SOLD';
+                    <div key={tier.tierId} className="space-y-3 bg-[#E4DFC8]/50 p-4 rounded-[3px] border border-[#0B0A08]/10">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#0B0A08]">
+                            {tier.name}
+                          </span>
+                          <span className="font-mono text-xs text-[#FF4F1F] font-semibold">
+                            {formatINR(tier.priceMinor)}
+                          </span>
+                        </div>
+                        <span className="font-mono text-[11px] text-[#0B0A08]/60">
+                          {availableCount} / {tier.seats.length} available
+                        </span>
+                      </div>
 
-                          let btnClass = 'bg-[#EDE8DD] border-[#0B0A08]/20 text-[#0B0A08]/80 hover:border-[#0B0A08]/80';
+                      {/* Wrapped Seat Grid - Left-Aligned, Never Clipped */}
+                      <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-1.5 justify-start">
+                        {tier.seats.map((seat) => {
+                          const seatId = seat.label;
+                          const isAvailable = seat.status === 'AVAILABLE';
+                          const isSelected = selectedSeatIds.includes(seatId);
+                          const isHeld = seat.status === 'HELD';
+                          const isSold = seat.status === 'SOLD';
+                          const seatNum = seatId.includes('-') ? seatId.split('-')[1] : seatId;
+
+                          let btnClass = 'bg-[#EDE8DD] border-[#0B0A08]/20 text-[#0B0A08]/80 hover:border-[#0B0A08]/80 hover:bg-[#F2EDE2]';
                           if (isSelected) {
-                            btnClass = 'bg-[#FF4F1F] text-white border-[#FF4F1F] ring-2 ring-[#FF4F1F]/30 font-bold';
+                            btnClass = 'bg-[#FF4F1F] text-white border-[#FF4F1F] ring-2 ring-[#FF4F1F]/40 font-bold scale-105';
                           } else if (isHeld) {
                             btnClass = 'bg-[#B8975A]/20 text-[#B8975A] border-[#B8975A]/40 cursor-not-allowed';
                           } else if (isSold) {
-                            btnClass = 'bg-[#0B0A08]/10 text-[#0B0A08]/20 border-transparent cursor-not-allowed line-through';
+                            btnClass = 'bg-[#0B0A08]/10 text-[#0B0A08]/30 border-transparent cursor-not-allowed line-through';
                           }
 
                           return (
@@ -200,10 +203,10 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                               key={seatId}
                               onClick={() => handleToggleSeat(seatId)}
                               disabled={!isAvailable}
-                              title={`${seatId} (${info?.tierName}: ${formatINR(info?.priceMinor || 0)})`}
-                              className={`w-7 h-7 rounded-[2px] font-mono text-[11px] border transition-all flex items-center justify-center ${btnClass}`}
+                              title={`${seatId} (${tier.name}: ${formatINR(tier.priceMinor)}) - ${seat.status}`}
+                              className={`h-8 rounded-[2px] font-mono text-[11px] border transition-all flex items-center justify-center cursor-pointer ${btnClass}`}
                             >
-                              {seatId.split('-')[1]}
+                              {seatNum}
                             </button>
                           );
                         })}
@@ -212,6 +215,26 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                   );
                 })
               )}
+            </div>
+
+            {/* Seat Map Legend */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#0B0A08]/10 font-mono text-[10px] text-[#0B0A08]/70">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded-[2px] bg-[#EDE8DD] border border-[#0B0A08]/20 inline-block" />
+                <span>Available</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded-[2px] bg-[#FF4F1F] inline-block" />
+                <span className="font-bold text-[#FF4F1F]">Selected</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded-[2px] bg-[#B8975A]/30 border border-[#B8975A]/50 inline-block" />
+                <span>Held</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded-[2px] bg-[#0B0A08]/10 border border-[#0B0A08]/20 inline-block line-through text-center leading-3">×</span>
+                <span>Sold</span>
+              </div>
             </div>
           </div>
 

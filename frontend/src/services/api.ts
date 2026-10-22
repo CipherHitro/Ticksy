@@ -1,4 +1,4 @@
-import type { EventItem, LedgerBalance, LedgerEntry, PaymentRecord, Ticket, User, UserRole } from '../types';
+import type { EventItem, LedgerBalance, LedgerEntry, PaymentRecord, Ticket, TicketTransferRequest, User, UserRole } from '../types';
 
 const BASE_URL = ((import.meta as any).env?.VITE_API_BASE_URL || (import.meta as any).env?.VITE_GATEWAY_URL || '').replace(/\/+$/, '');
 
@@ -277,7 +277,69 @@ export async function getEvents(): Promise<ApiResponse<EventItem[]>> {
       };
     });
 
+    // Cache events in localStorage for instant rendering and zero-blank loads
+    try {
+      localStorage.setItem('ticksy_cached_events', JSON.stringify(events));
+      const orgMap: Record<string, string> = JSON.parse(localStorage.getItem('ticksy_event_organizers') || '{}');
+      events.forEach((e) => {
+        if (e.id && e.organizerId) orgMap[e.id] = e.organizerId;
+      });
+      localStorage.setItem('ticksy_event_organizers', JSON.stringify(orgMap));
+    } catch {}
+
     return { success: true, data: events, requestId: catRes.requestId };
+  }
+
+  // Retry once with a brief 350ms delay if first catalog fetch failed or was empty
+  await new Promise((r) => setTimeout(r, 350));
+  const retryRes = await apiFetch<any[]>('/api/v1/catalog/events', { method: 'GET' });
+  if (retryRes.success && Array.isArray(retryRes.data) && retryRes.data.length > 0) {
+    const events: EventItem[] = retryRes.data.map((item: any) => {
+      const id = item.id || item._id;
+      const genre = (item.category || 'music').toLowerCase();
+      const poster = item.posterUrl || genrePosters[genre] || genrePosters.music;
+      const startsAtDate = item.startsAt ? new Date(item.startsAt) : new Date();
+      const dateStr = startsAtDate.toISOString().split('T')[0];
+      const timeStr = startsAtDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST';
+
+      const tiers = (item.ticketTiers || []).map((t: any) => ({
+        id: t.tierId || t.id || 'tier-1',
+        name: t.name || 'General Admission',
+        priceMinor: t.priceMinor ?? (t.price_minor ?? 100000),
+        currency: t.currency || 'INR',
+        capacity: t.capacity || 100,
+        available: t.capacity || 100,
+        description: t.description || '',
+      }));
+
+      const totalSeats = tiers.reduce((acc: number, t: any) => acc + (t.capacity || 0), 0);
+      const minPrice = item.fromPriceMinor ?? (tiers[0]?.priceMinor || 100000);
+
+      return {
+        id,
+        title: item.title,
+        subtitle: item.description || 'Live Event on Ticksy',
+        city: item.venue?.city || 'India',
+        venue: item.venue?.name || 'Main Stage',
+        date: dateStr,
+        time: timeStr,
+        genre: (['music', 'tech', 'comedy', 'workshop', 'theatre'].includes(genre) ? genre : 'music') as any,
+        priceMinor: minPrice,
+        currency: 'INR',
+        availableSeats: totalSeats,
+        totalSeats,
+        posterUrl: poster,
+        isFeatured: true,
+        tiers,
+        organizerId: item.organizerId || item.organizer_id,
+      };
+    });
+
+    try {
+      localStorage.setItem('ticksy_cached_events', JSON.stringify(events));
+    } catch {}
+
+    return { success: true, data: events, requestId: retryRes.requestId };
   }
 
   // 2. Fallback to Booking Service
@@ -315,6 +377,17 @@ export async function getEvents(): Promise<ApiResponse<EventItem[]>> {
 
     return { success: true, data: events, requestId: bookRes.requestId };
   }
+
+  // Fallback to cached events from previous session so homepage is never empty
+  try {
+    const cached = localStorage.getItem('ticksy_cached_events');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return { success: true, data: parsed };
+      }
+    }
+  } catch {}
 
   return { success: true, data: [] };
 }
@@ -534,7 +607,17 @@ export async function recordLedgerRefund(params: {
     } catch {}
   }
 
-  const organizerId = params.organizerId || fallbackOrganizer;
+  let organizerId = params.organizerId;
+  if (!organizerId) {
+    try {
+      const orgMap: Record<string, string> = JSON.parse(localStorage.getItem('ticksy_event_organizers') || '{}');
+      organizerId = orgMap[params.bookingId] || Object.values(orgMap)[0];
+    } catch {}
+  }
+  if (!organizerId) {
+    organizerId = fallbackOrganizer;
+  }
+
   const refundId = params.refundId || generateUUID();
   const currency = params.currency || 'INR';
 
@@ -731,6 +814,102 @@ export function refundUserTicket(ticketId: string): boolean {
     return true;
   }
   return false;
+}
+
+/* ================= TICKET TRANSFER PROTOCOL (SAFE PEER-TO-PEER) ================= */
+
+export function createTicketTransfer(
+  ticketOrParams: Ticket | { ticket: Ticket; senderUser: User; recipientEmail: string },
+  senderUserParam?: User,
+  recipientEmailParam?: string
+): TicketTransferRequest {
+  const ticket = 'ticket' in ticketOrParams ? ticketOrParams.ticket : ticketOrParams;
+  const senderUser = 'senderUser' in ticketOrParams ? ticketOrParams.senderUser : senderUserParam!;
+  const recipientEmail = 'recipientEmail' in ticketOrParams ? ticketOrParams.recipientEmail : recipientEmailParam!;
+
+  const transferId = 'xfer-' + generateUUID().slice(0, 8);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 48 * 3600 * 1000).toISOString();
+
+  const req: TicketTransferRequest = {
+    transferId,
+    ticketId: ticket.id,
+    senderEmail: senderUser.email,
+    senderName: senderUser.name,
+    recipientEmail: recipientEmail.trim().toLowerCase(),
+    ticketSnapshot: ticket,
+    status: 'PENDING',
+    createdAt: now.toISOString(),
+    expiresAt,
+  };
+
+  const stored: TicketTransferRequest[] = JSON.parse(localStorage.getItem('ticksy_ticket_transfers') || '[]');
+  stored.unshift(req);
+  localStorage.setItem('ticksy_ticket_transfers', JSON.stringify(stored));
+
+  // Send real email notification to recipient via Notification microservice (Resend)
+  sendNotificationEvent('welcome' as any, {
+    userId: 'recipient_' + generateUUID().slice(0, 6),
+    email: recipientEmail.trim().toLowerCase(),
+    name: 'Attendee',
+    role: 'ATTENDEE',
+    registeredAt: now.toISOString(),
+    subject: `Ticket Transfer: ${senderUser.name} sent you tickets for ${ticket.eventTitle}`,
+  }).catch((err) => console.warn('Notification transfer dispatch error:', err));
+
+  return req;
+}
+
+export function getPendingTransfersForUser(userEmail?: string): TicketTransferRequest[] {
+  if (!userEmail) return [];
+  const stored: TicketTransferRequest[] = JSON.parse(localStorage.getItem('ticksy_ticket_transfers') || '[]');
+  const now = new Date().toISOString();
+  return stored.filter(
+    (t) => t.recipientEmail.toLowerCase() === userEmail.toLowerCase() && t.status === 'PENDING' && t.expiresAt > now
+  );
+}
+
+export function getTransferById(transferId: string): TicketTransferRequest | null {
+  const stored: TicketTransferRequest[] = JSON.parse(localStorage.getItem('ticksy_ticket_transfers') || '[]');
+  return stored.find((t) => t.transferId === transferId) || null;
+}
+
+export function acceptTicketTransfer(transferId: string, recipientUser: User): Ticket | null {
+  const stored: TicketTransferRequest[] = JSON.parse(localStorage.getItem('ticksy_ticket_transfers') || '[]');
+  const index = stored.findIndex((t) => t.transferId === transferId);
+  if (index === -1) return null;
+
+  const xfer = stored[index];
+  if (xfer.status !== 'PENDING') return null;
+
+  stored[index] = { ...xfer, status: 'ACCEPTED' };
+  localStorage.setItem('ticksy_ticket_transfers', JSON.stringify(stored));
+
+  // Issue new verified ticket to recipient
+  const newSerial = 'TK-XFER-' + generateUUID().slice(0, 6).toUpperCase();
+  const transferredTicket: Ticket = {
+    ...xfer.ticketSnapshot,
+    id: 'bkg-xfer-' + generateUUID().slice(0, 8),
+    serialNumber: newSerial,
+    attendeeName: recipientUser.name,
+    attendeeEmail: recipientUser.email,
+    status: 'VALID',
+    purchasedAt: new Date().toISOString(),
+    qrCodeValue: `ticksy:verified:${newSerial}:${transferId}`,
+  };
+
+  addPurchasedTicket(transferredTicket);
+  return transferredTicket;
+}
+
+export function cancelTicketTransfer(transferId: string): boolean {
+  const stored: TicketTransferRequest[] = JSON.parse(localStorage.getItem('ticksy_ticket_transfers') || '[]');
+  const index = stored.findIndex((t) => t.transferId === transferId);
+  if (index === -1) return false;
+
+  stored[index] = { ...stored[index], status: 'CANCELLED' };
+  localStorage.setItem('ticksy_ticket_transfers', JSON.stringify(stored));
+  return true;
 }
 
 /* ================= MICROSERVICES HEALTH CHECK ================= */

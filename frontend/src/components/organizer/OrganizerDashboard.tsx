@@ -141,7 +141,7 @@ export const OrganizerDashboard: React.FC<OrganizerDashboardProps> = ({
 
         {/* Top Metric Cards in Brass & Bone */}
         {balance && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
             <div className="p-4 bg-[#14120E] border border-hairline-dark rounded-[2px]">
               <div className="font-mono text-[10px] uppercase text-[#EDE8DD]/50">AVAILABLE TO WITHDRAW</div>
               <div className="font-serif text-2xl sm:text-3xl font-bold text-[#B8975A] tabular-nums mt-1">
@@ -164,6 +164,14 @@ export const OrganizerDashboard: React.FC<OrganizerDashboardProps> = ({
                 {formatINR(balance.platformFeesMinor)}
               </div>
               <div className="font-mono text-[10px] text-[#EDE8DD]/50 mt-1">Automated deduction</div>
+            </div>
+
+            <div className="p-4 bg-[#14120E] border border-hairline-dark rounded-[2px]">
+              <div className="font-mono text-[10px] uppercase text-[#EDE8DD]/50">REFUNDS DEDUCTED</div>
+              <div className="font-serif text-2xl sm:text-3xl font-bold text-[#FF4F1F] tabular-nums mt-1">
+                {formatINR(balance.refundsMinor || 0)}
+              </div>
+              <div className="font-mono text-[10px] text-[#FF4F1F]/70 mt-1">Returned to attendees</div>
             </div>
 
             <div className="p-4 bg-[#14120E] border border-hairline-dark rounded-[2px]">

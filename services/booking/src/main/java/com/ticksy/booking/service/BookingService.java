@@ -540,6 +540,9 @@ public class BookingService {
                 .distinct()
                 .toList();
 
+        EventInventory inventory = eventInventoryRepository.findById(booking.getEventId()).orElse(null);
+        String organizerId = inventory != null ? inventory.getOrganizerId() : "org-001";
+
         return new BookingResponseDto(
                 booking.getId(),
                 booking.getEventId(),
@@ -550,7 +553,8 @@ public class BookingService {
                 booking.getCurrency(),
                 booking.getHoldExpiresAt(),
                 booking.getPaymentId(),
-                booking.getCreatedAt()
+                booking.getCreatedAt(),
+                organizerId
         );
     }
 }

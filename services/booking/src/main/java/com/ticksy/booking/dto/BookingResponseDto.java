@@ -13,5 +13,6 @@ public record BookingResponseDto(
     String currency,
     Instant holdExpiresAt,
     String paymentId,
-    Instant createdAt
+    Instant createdAt,
+    String organizerId
 ) {}
