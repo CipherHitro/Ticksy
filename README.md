@@ -38,7 +38,7 @@ The frontend provides a branded event-ticketing experience with event discovery,
 
 ## Architecture at a glance
 
-![Ticksy Microservices Architecture](docs/Ticksy Microservices Architecture Diagram.png)
+![Ticksy Microservices Architecture](docs/Ticksy-Microservices-Architecture-Diagram.png)
 
 ### Main design principles
 
